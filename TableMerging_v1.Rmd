@@ -1,0 +1,131 @@
+---
+title: "TableMerging"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r load libraries}
+#Load libraries
+#install.packages("easypackages")
+library(easypackages) #can also install multiples with packages()
+x<-c("ggplot2", "reshape2", "broom", "dplyr", "tidyverse", "data.table","ape", "Biostrings", "devtools","ampvis2", "readr", "stringr", "phyloseq", "htmltools")
+libraries(x)
+rm(x)
+```
+
+loading paths and defining data
+```{r paths and input}
+print("add metadata in the 'output' dir")
+
+input=NA
+input$path="~/Documents/Collaborations/HelminthsMetaAnalysis/input-txts/"
+input$Je17=paste0(input$path, "Jenkins2017.txt")
+input$Je18= paste0(input$path, "Jenkins2018.txt")
+input$Pro20=paste0(input$path, "Prommi2020.txt")
+input$Ya17=paste0(input$path, "Yang2017.txt")
+input$Ea19=paste0(input$path, "Easton2019.txt")
+input$To19=paste0(input$path, "ToroLondono2019.txt")
+input$Ru20=paste0(input$path, "Rubel2020.txt")
+
+
+output0=NA
+output0$name="output-merged/"
+dir.create(paste0(input$path, output0$name))
+output0$path=(paste0(input$path, output0$name))
+print(paste("creating output at:", output0$path))
+```
+
+
+### Loading data
+```{r load data}
+data=NA
+#load counts table (USED FULL table, not the filtered _flt4 one)
+data$Je17=read.table(input$Je17, header=T, check.names=F, row.names = 1) ; head(data$Je17)
+data$Je18= read.table(input$Je18, header=T, check.names=F, row.names = 1) ; head(data$Je18)
+data$Pro20=read.table(input$Pro20, header=T, check.names=F, row.names=1) ; head(data$Pro20)
+data$Ya17=read.table(input$Ya17, header=T, check.names=F, row.names=1) ; head(data$Ya17)
+data$Ea19=read.table(input$Ea19, header=T, check.names=F, row.names=1) ; head(data$Ea19)
+data$To19=read.table(input$To19, header=T, check.names=F, row.names=1) ; head(data$To19)
+data$Ru20=read.table(input$Ru20, header=T, check.names=F, row.names=1) ; head(data$Ru20)
+```
+
+```{r preparation of each data frame}
+taxlist=c("Kingdom",  "Phylum", "Class", "Order", "Family", "Genus", "Species" )
+study=names( DataFrameList(data)); study=study[-(1)]; study=study[-(8)]
+study
+
+merge=NA 
+merge$Je17=data$Je17 # for some reason the first object needs creation before the loop would work
+for (i in study[1:7]){
+colnames(data[[i]]); dim(data[[i]])
+merge[[i]]=data[[i]]
+row.names(merge[[i]])=NULL #removing row.names cuz trouble
+merge[[i]]=unite(merge[[i]], "Lineage", taxlist , sep="; ") #creating Lineage column + rming taxlist columns
+#agglomerating for each lineage, summing values in each column (needed for each DF individually)
+merge[[i]]=merge[[i]] %>% group_by(Lineage) %>% summarise(across(everything(), sum)) 
+colnames(merge[[i]]); dim(merge[[i]]) #see how things are changed
+}
+merge$Ea19
+merge$Je17
+i
+```
+
+
+```{r, join}
+#joining 
+#full_join will returns all the rows in X or Y, but with multiple matching, will duplicate Y rows for each matching row of X
+merge$mrg=full_join(merge$Je17, merge$Je18, by="Lineage"); dim(merge$mrg) 
+merge$mrg=full_join(merge$mrg, merge$Pro20, by="Lineage"); dim(merge$mrg)
+merge$mrg=full_join(merge$mrg, merge$Ya17, by="Lineage"); dim(merge$mrg)
+merge$mrg=full_join(merge$mrg, merge$Ea19, by="Lineage"); dim(merge$mrg)
+merge$mrg=full_join(merge$mrg, merge$To19, by="Lineage"); dim(merge$mrg)
+merge$mrg=full_join(merge$mrg, merge$Ru20, by="Lineage"); dim(merge$mrg)
+
+
+  #so duplicates might have to be removed 
+merge$mrg=merge$mrg[!duplicated(merge$mrg$Lineage), ]; dim(merge$mrg) 
+  #replace all NAs with 0s
+merge$mrg[is.na(merge$mrg)] = 0
+  #convert back to DF
+merge$mrg= as.data.frame(merge$mrg)
+   #adding ID to each row
+col=paste0(rep("TAX", dim(merge$mrg)[1]) , seq(1:dim(merge$mrg)[1]))
+rownames(merge$mrg)=col
+  #moving "Lineage" as last column
+merge$mrg=merge$mrg %>% relocate("Lineage", .after = last_col())
+
+merge$mrg[1:5, 1:9]
+```
+#lets test inner_join: ah thats for only the matching rows
+merge$mrg=inner_join(merge$Je17, merge$Je18, by="Lineage", keep=T); dim(merge$mrg) 
+View(merge$mrg)
+
+```{r separating lineage}
+taxlist=c("Kingdom",  "Phylum", "Class", "Order", "Family", "Genus", "Species" )
+
+merge$mrg=separate(merge$mrg, "Lineage", into=taxlist,  sep="; ")
+View(merge$mrg)
+```
+
+
+
+```{r export merged dataframe}
+  write.table(merge$mrg, paste0(output$path, "mergedTableWlineage.txt"), sep="\t", col.names=NA, quote = F, na="")
+
+#separating out TAX from COUNTS into separate tables
+merge$tax=merge$mrg[, c(taxlist)]
+merge$counts=merge$mrg[, !names(merge$mrg) %in% taxlist]
+
+write.table(merge$counts, paste0(output$path, "mergedCounts.txt"), 
+            sep="\t", col.names=NA, quote = F, na="")
+write.table(merge$tax, paste0(output$path, "mergedTax.txt"), 
+            sep="\t", col.names=NA, quote = F, na="")
+write.table(merge$mrg, paste0(output$path, "mergedTable.txt") ,
+            sep="\t", col.names=NA, quote = F, na="")
+```
+
+
+```{r save work}
+save.image("TableMerging_v1.RData")
+```
+

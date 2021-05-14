@@ -1,0 +1,920 @@
+---
+title: "16S-Vis-Helminths"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#Load libraries
+#install.packages("easypackages")
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+ #   install.packages("BiocManager")
+#devtools::install_github("const-ae/ggsignif")
+```{r load libraries}
+library(easypackages) #can also install multiples with packages()
+x<-c("ggplot2", "reshape2", "broom", "dplyr", "tidyverse", "GUniFrac", "phangorn", "doParallel", "clustsig","scales", "grid", "vegan", "survival",  "data.table","ape", "Biostrings", "RColorBrewer", "devtools","ampvis2", "metacoder", "VennDiagram", "vegan", "limma","taxa",  "readr", "stringr", "phyloseq", "DESeq2", "microbiomeSeq", "morpheus", "htmltools")
+libraries(x)
+rm(x)
+
+#load("16S-Vis-Helminths_clean.RData")
+```
+
+
+#loading paths and defining data
+```{r paths and input}
+print("crating paths for community analysis")
+
+input=NA
+input$path="~/Documents/Collaborations/HelminthsMetaAnalysis/input-txts/output-merged/16S_vis/"
+input$adj=paste0(input$path, "ASV_counts_ADJ-v3.txt"); input$counts #this is smp flt + batch adj counts
+input$meta=paste0(input$path, "mergedMETA_04122021.txt") #this is smp meta of non-flt samples
+input$tax=paste0(input$path, "ASV_tax_flt-v3.txt") #this is tax data of flt+batch adj -TAXonomies
+
+output=NA #in this case will use same as input
+            #output$dir="~/Documents/Collaborations/HelminthsMetaAnalysis/input-txts/output-merged/16S_vis/" 
+            #dir.create(paste0(input$path, output$dir))
+output$path=input$path #(paste0(input$path, output$dir))
+print(paste("using output at:", output$path))
+```
+
+### Loading data
+```{r load data}
+#load counts table
+data=NA
+data$adj=read.table(input$adj, head=T, check.names = F, row.names = 1); data$adj[1:3,1:3]
+data$adj<-data$adj[ , order(names(data$adj))] #order by column names
+dim(data$adj)
+
+#metadata
+data$meta=read.table(input$meta, header=T, check.names = F, sep='\t', row.names=1)
+data$meta <- data$meta[ order(row.names(data$meta)), ];  (data$meta)[1:3, 1:5]
+head(data$meta); dim(data$meta)
+##remove 3 samples that have no Age or Gender info (if those exist) & rm them from adj table
+data$meta=subset(data$meta, data$meta$AgeCategory!="NA")
+data$meta=subset(data$meta, data$meta$Gender!="NA"); dim(data$meta)
+##remove metadata samples that got filtered out earlier
+data$meta=data$meta[ colnames(data$adj), ]  #removing flt samples from data$meta
+dim(data$meta); dim(data$adj)
+#fixing the Uninfected:HelminthCohorts to "None"
+data$meta$HelminthCohort[data$meta$HelminthCohort=="" ]<-"None"
+
+#load the taxonomy
+data$tax<-read.table(input$tax, header=T, row.names=1, check.names=FALSE, sep="\t"); 
+dim(data$tax); data$tax[1:14, 5:7]
+#remove taxonomies filterd out earlier
+data$tax=data$tax[row.names(data$adj),]
+dim(data$tax); dim(data$adj)
+```
+#since TaX was fixed in BatchAdjust.RMD, i dont need this code
+data$taxdf=data$tax_all
+data$taxdf$Species[is.na(data$taxdf$Species)]<- "sp."; head(data$taxdf)
+data$taxdf$Species<-paste(data$taxdf$Genus, data$taxdf$Species); head(data$taxdf)
+data$taxdf$Species<-with(data$taxdf, ifelse(Species=="NA sp.",paste(data$taxdf$Family, "sp."), Species )); head(data$taxdf)
+data$taxdf$Species<-with(data$taxdf, ifelse(Species=="NA sp.", paste(data$taxdf$Order, "sp."), Species )); head(data$taxdf)
+data$taxdf$Species<-with(data$taxdf, ifelse(Species=="NA sp.", paste(data$taxdf$Class, "sp."), Species )); head(data$taxdf)
+data$taxdf$Species<-with(data$taxdf, ifelse(Species=="NA sp.", paste(data$taxdf$Phylum, "sp."), Species )); head(data$taxdf)
+data$taxdf$Species<-with(data$taxdf, ifelse(Species=="NA sp.", paste(data$taxdf$Kingdom, "sp."), Species )); head(data$taxdf)
+data$tax_all=data$taxdf
+
+
+```{r organizing levels in groups of interest}
+lvl=NA
+lvl$InfectionStatus=c("Uninfected", "Infected");
+data$meta$InfectionStatus=factor(data$meta$InfectionStatus, levels=lvl$InfectionStatus); data$meta$InfectionStatus
+
+lvl$InfectionType=c("None", "Single-species", "Multi-species")
+data$meta$InfectionType=factor(data$meta$InfectionType, levels=lvl$InfectionType);data$meta$InfectionType
+
+lvl$AgeCategory=c("Infancy", "Childhood", "Adolescence", "Adulthood", "MiddleAge", "AdvancedAge")
+data$meta$AgeCategory=factor(data$meta$AgeCategory, levels=lvl$AgeCategory); data$meta$AgeCategory
+
+lvl$StudyID=levels(unique(data$meta$StudyID)); lvl$StudyID
+data$meta$StudyID=factor(data$meta$StudyID)
+
+   
+dput(unique(data$meta$HelminthSpecies))
+lvl$HelminthSpecies=c("None", "various", "Ascaris_sp",  "Enterobius_sp",  "Haplorchis_sp",
+                      "HookwormA",  "HookwormN", "HookwormNA", "Strongyloides_sp", "Trichuris_sp"); lvl$HelminthSpecies
+data$meta$HelminthSpecies=factor(data$meta$HelminthSpecies, levels=lvl$HelminthSpecies); data$meta$HelminthSpecies
+```
+
+some stats of FILTERED/ADJUSTED samples (not all samples from the input metadata will have made it through filtering step)
+```{r}
+table=list()
+table$StudyID=table(data$meta$StudyID)
+table$HelminthSpecies=table(data$meta$HelminthSpecies)
+table$HelminthCohort=table(data$meta$HelminthCohort)
+table$StIDSpecies=table(data$meta$StudyID, data$meta$HelminthSpecies)
+table$AgeCategory=table(data$meta$AgeCategory)
+table$AgeInfection=table(data$meta$AgeCategory, data$meta$InfectionStatus)
+table$AgeCohort=table(data$meta$AgeCategory, data$meta$HelminthCohort)
+table$AgeSpecies=table(data$meta$AgeCategory, data$meta$HelminthSpecies)
+table; names(table)
+
+output$tables=paste0(output$path, "tables/")
+dir.create(output$tables)
+lapply(names(table), function(x) {
+  write.table(table[[x]], paste0(output$tables, "table_", x , ".txt"),  
+            sep="\t", col.names=NA, quote=F, na="NA")})
+```
+
+```{r save work}
+save.image("16S-Vis-Helminths_clean.RData")
+```
+
+### Calculating alpha diversity indexes
+```{r Alpha diversity on adjusted filtered counts }
+############ use flt counts   ########################################
+library(vegan)
+alpha=NA
+#Number of individuals per sample & min individuals
+  alpha$reads=colSums(data$adj);   alpha$reads
+  alpha$minindiv=min(colSums(data$adj));   alpha$minindiv
+#Observed species richness and maximum sp. richness:
+  alpha$SpRichness=vegan::specnumber(data$adj, MARGIN = 2);   alpha$SpRichness #number of species
+      alpha$obs_sprch_max=max(vegan::specnumber(data$adj, MARGIN = 2))  
+      maxsamp= which(specnumber(data$adj, MARGIN = 2)==max(specnumber(data$adj, MARGIN = 2)))
+      print(paste0("maximum number of species in a sample: ", alpha$obs_sprch_max, ". And is in sample: ", names(maxsamp)))
+  #expected species richness and maximum expected:
+  alpha$exp_sprch=rarefy(data$adj, alpha$minindiv, se=F, MARGIN = 2);  #alpha$exp_sprch
+  alpha$exp_sprch_max=max(rarefy(data$adj, alpha$minindiv, se=F, MARGIN = 2));  #alpha$exp_sprch_max
+      paste("expected maximum number of species in a sample:", round(alpha$exp_sprch_max,0))
+  
+
+#Shannon, Simpson and Inverse Simpson,  Pielou's Evenness, dominance:
+  alpha$Shannon=vegan::diversity(as.matrix(data$adj), "shannon", MARGIN = 2);   head(alpha$Shannon)
+  alpha$InvSimpson=vegan::diversity(data$adj, "inv", MARGIN = 2);   head(alpha$InvSimpson)
+  alpha$Evenness=alpha$Shannon/log(specnumber(data$adj, MARGIN = 2)); head(alpha$Evenness) #this is Pielou's Evenness index
+  #alpha$Fisher=fisher.alpha(data$adj, MARGIN=2)
+#install.packages("fossil")
+library(fossil) #https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+  alpha$chao1=apply(data$adj, 2, chao1); head(alpha$chao1)
+  
+  
+#Amending the metadata table with the produced indices (based on adjR data)
+      alpha$temp=cbind(alpha$SpRichness, alpha$Evenness, alpha$reads, alpha$Shannon, alpha$InvSimpson, alpha$chao1)#, tree_div)
+      colnames(alpha$temp)=c("SpRichness", "Evenness", "NumbReads", "Shannon", "InvSimpson", "chao1")
+      head(alpha$temp)
+alpha$table=alpha$temp
+      
+data$meta=cbind(data$meta, round(alpha$temp, 2)) #extending the meta table
+      head(data$meta)      
+
+output$alpha=paste0(output$path, "AlphaDiv/")
+dir.create(output$alpha)
+write.table(alpha$table, paste0(output$alpha, "AlphaDiv_only_flt.txt"), sep="\t", col.names=NA, quote=F, na="")
+write.table(data$meta, paste0(output$alpha, "AlphaDiv_meta_flt.txt"), sep="\t", col.names=NA, quote=F, na="")
+```
+
+
+ 
+#Grouped boxplots for alpha diversity
+```{r}
+library(reshape)
+#=========================== Healthy Cohort exam
+#does age play a role
+  batch="Uninfected"
+data$subset$meta=subset(data$meta, data$meta$InfectionStatus == batch)
+dim(data$subset$meta); tail(data$subset$meta)
+group1="AgeCategory"; data$subset$meta$group1=data$subset$meta$AgeCategory
+
+sst=NA
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1", colnames(alpha$table) ))
+  sst$melt=melt(as.data.table(sst$meta), id.var="group1"); (sst$melt)
+
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   sst$models;
+   capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 , "-ANOVA.txt")) 
+  
+#plotting as 1 group:age
+  p1=ggplot(sst$melt, aes(group1, value)) + labs(fill=group1) + 
+    geom_boxplot(aes(x=group1, y=as.numeric(as.character(value)), fill=group1)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=group1) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=45, hjust=1, size=14), legend.position = "right", 
+          legend.title=element_text(size=14), legend.text=element_text(size=12)); p1
+ n<-length(unique(data$subset$meta$group1)); library(ggsignif)
+p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test", #map_signif_level = F, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                      step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+  qplotheight <- min(2.5*ceiling(length(data$adj)/3), 10)
+pdf(paste0(output$alpha,"AlphaDiv-",batch,"~", group1 ,".pdf"), width=14, height=qplotheight); print(p2); dev.off()
+#\ role of age: significant
+
+#does gender play a role?
+ batch="Uninfected"
+data$subset$meta=subset(data$meta, data$meta$InfectionStatus == batch)
+dim(data$subset$meta); tail(data$subset$meta)
+group1="Gender"; data$subset$meta$group1=data$subset$meta$Gender
+nest="AgeCategory"
+
+sst=NA
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1",nest, colnames(alpha$table) ))
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1", nest)); (sst$melt)
+
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1*AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable; sst$models;
+   capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_interaction=", nest , "-ANOVA.txt")) 
+  table(sst$melt$group1, sst$melt$AgeCategory) 
+#plotting as 1 group:gender
+  p1=ggplot(sst$melt, aes(group1, value)) + labs(fill=group1) + 
+    geom_boxplot(aes(x=group1, y=as.numeric(as.character(value)), fill=group1)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=group1) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=45, hjust=1, size=14), legend.position = "right", 
+          legend.title=element_text(size=14), legend.text=element_text(size=12)); p1
+ n<-length(unique(data$subset$meta$group1)); library(ggsignif)
+p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test", #map_signif_level = F, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                      step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+  qplotheight <- min(2.5*ceiling(length(data$adj)/3), 8)
+pdf(paste0(output$alpha,"AlphaDiv-",batch,"~", group1 ,".pdf"), width=10, height=qplotheight); print(p1); dev.off()
+#\role of gender: not significant (has to be considered as interractive with AgeCategory, tho not nested)
+
+#does StudyID play a role in Alpha diversity (account for interraction with AgeCatg)?
+  batch="Uninfected"
+data$subset$meta=subset(data$meta, data$meta$InfectionStatus == batch)
+dim(data$subset$meta); tail(data$subset$meta)
+group1="StudyID"; data$subset$meta$group1=data$subset$meta$StudyID
+nest="AgeCategory"
+sst=NA
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1",nest, colnames(alpha$table) ))
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1", nest)); (sst$melt)
+
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1*AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable; sst$models;
+   capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_interaction=", nest , "-ANOVA.txt")) 
+#StudyID*Age has only a weak effect on Alpha Div
+#--------------------- end of healthy cohort exam
+
+#================ exam alpha div based on Infection Status (with and without AgeCategory nesting)
+  batch="all"
+data$subset$meta=data$meta
+dim(data$subset$meta); tail(data$subset$meta)
+group1="InfectionStatus"; data$subset$meta$group1=data$subset$meta$InfectionStatus
+
+#without nesting
+sst=NA
+nest="none"
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1", "Shannon", "InvSimpson")); sst$meta
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1")); (sst$melt)
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1, data=.))
+   sst$models=lapply(sst$nma$Model, summary)
+   names(sst$models)=sst$nma$variable; sst$models;
+capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_nest=" , nest, "-ANOVA.txt"))
+   
+#with nesting
+sst=NA
+nest="AgeCategory"
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1", "AgeCategory", "Shannon", "InvSimpson")); sst$meta
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1", "AgeCategory") ); (sst$melt)
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1 %in% AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary)
+   names(sst$models)=sst$nma$variable; sst$models;
+capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_nest=" , nest, "-ANOVA.txt"))
+   #this showed that nesting for AGE is necessary for all downstream analyses
+#------------------------ end of Infection Status examination with nested/not-nested model
+
+    
+#================ exam alpha div based on InfectionType, HelminthSpecies, HelminthCohort (with AgeCategory nesting)
+  batch="all"
+data$subset$meta=data$meta
+dim(data$subset$meta); tail(data$subset$meta)
+group1="InfectionType"; data$subset$meta$group1=data$subset$meta$InfectionType
+#group1="HelminthSpecies"; data$subset$meta$group1=data$subset$meta$HelminthSpecies
+#group1="HelminthCohort"; data$subset$meta$group1=data$subset$meta$HelminthCohort
+
+#with nesting
+sst=NA
+nest="AgeCategory"
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1", nest , "Shannon","InvSimpson" )); sst$meta
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1",nest) ); (sst$melt)
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1 %in% AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary)
+   names(sst$models)=sst$nma$variable; sst$models;
+capture.output(c("all subgroups", sst$models), file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_nest=" , nest, "-ANOVA.txt"))
+
+#pairwise ANOVA in InfectionType groups (only), nested for Age Category
+   sst$submelt=subset(sst$melt, sst$melt$group1!="Multi-species"); sst$submelt #"Single-species" | "Multi-species"
+   sst$nma=sst$submelt %>% group_by(variable) %>% do(Model=aov(value ~ group1 %in% AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary)
+   names(sst$models)=sst$nma$variable; sst$models;
+
+pair=unique(sst$submelt$group1)
+capture.output(c(paste( pair[1],"~",pair[2] ), sst$models), 
+               file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1,"_nest=" , nest, "-ANOVA.txt"), append = T)
+#------------------------ end of InfectionType, HelminthSpecies, HelminthCohort with nested model
+ 
+ 
+  
+#================ exam alpha div based on HelminthSpecies (with AgeCategory nesting), removing "none" & "various" groups
+#  batch="SelectedSpecies"
+#data$subset$meta=subset(data$meta, data$meta$HelminthSpecies!="None" & data$meta$HelminthSpecies!="various")
+  batch="cumulativeSpecies"
+data$subset$meta=subset(data$meta, data$meta$HelminthSpecies=="None" | data$meta$HelminthSpecies=="various")
+
+dim(data$subset$meta); tail(data$subset$meta)
+group1="HelminthSpecies"; data$subset$meta$group1=data$subset$meta$HelminthSpecies
+
+
+#with nesting
+sst=NA
+nest="AgeCategory"
+  colnames(data$subset$meta)
+  sst$meta=subset(data$subset$meta, select=c("group1", nest , "Shannon", "InvSimpson" )); sst$meta
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1",nest) ); (sst$melt)
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1 %in% AgeCategory, data=.))
+   sst$models=lapply(sst$nma$Model, summary)
+   names(sst$models)=sst$nma$variable; sst$models;
+capture.output(sst$models, file=paste0(output$alpha,"AlphaDiv-",batch,"~",  group1 ,"_nest=" , nest, "-ANOVA.txt"))
+  table(sst$melt$AgeCategory, sst$melt$group1)
+
+#plotting HelminthSpecies per Age Category
+#plotting for only 1 index so I can see internal variation with Age
+  batch="all"
+nest="AgeCategory"
+group1="HelminthSpecies"; data$meta$group1=data$meta$HelminthSpecies
+  colnames(data$meta)
+  sst=NA
+  sst$meta=subset(data$meta, select=c("group1", nest , "Shannon", "InvSimpson" ))
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1", nest)); (sst$melt)
+  
+p1=ggplot(sst$melt, aes(group1, value)) + 
+    labs(fill=group1, title=paste("Alpha diversity indices for",batch, "samples")) +
+    geom_boxplot(aes(x=group1, y=as.numeric(as.character(value)), fill=AgeCategory)) + theme_bw()+
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=paste(nest)) +
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=45, hjust=1, size=12), 
+          legend.position = "right", legend.title=element_text(size=12), 
+          legend.text=element_text(size=12)); p1
+  qplotheight <- min(8*ceiling(length(sst$melt)/3), 6)
+  qplotwidth <- 16#max(1.6*n, 16)
+  pdf(paste0(output$alpha , "AlphaDiv~", batch, "~", group1,"_","per=", nest, ".pdf"), 
+      width=qplotwidth, height=qplotheight); print(p1); dev.off()
+#------------------------ end of HelminthSpecies examination with nested ANOVA model
+ 
+```
+
+
+### gPERMANOVA, pwPERMANOWA & ANOSIM
+http://cc.oulu.fi/~jarioksa/softhelp/vegan/html/adonis.html
+```{r PERMANOVA ANOSIM}
+###### GLOBAL PERMANOVA
+output$tests=paste0(output$path, "sTests/")
+dir.create(output$tests)
+#important to have all sample files in same order!!!!
+data$adj=data$adj[ , sort(colnames(data$adj))] #sorts headers/colnames
+data$meta <- data$meta[sort(row.names(data$meta)), ] #sorts rows. 
+
+#=================== healthy cohorts exploration
+#lets explore the effect of StudyID in healthy cohorts/microbiomes
+batch="Uninfected"
+factor="StudyID"
+data$subset$meta=subset(data$meta, InfectionStatus==batch); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+  Dmtx=vegdist(t(data$subset$adj))
+#gPERMANOVA
+ov=adonis(Dmtx ~ data$subset$meta[[factor]]); ov
+capture.output(ov, file=paste0(output$tests, "gPMVA-" , batch ,"~", factor ,".txt"))
+#ANOSIM
+im <- anosim(Dmtx, data$subset$meta[[factor]]); im
+capture.output(im, file=paste0(output$tests,"ANOSIM-", batch, "~", factor, ".txt"))
+# seems nest=StudyID would be necessary
+
+#lets explore the effect of age & gender in healthy individuals
+batch="Uninfected"
+factor="AgeCategory"
+strata="StudyID"
+data$subset$meta=subset(data$meta, InfectionStatus==batch); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+  Dmtx=vegdist(t(data$subset$adj))
+#gPERMANOVA
+ov=adonis(Dmtx ~ data$subset$meta[[factor]], strata=data$subset$meta[[strata]]); ov
+capture.output(ov, file=paste0(output$tests, "gPMVA-" , batch ,"~", factor, "_strata=", strata ,".txt"))
+#ANOSIM
+im <- anosim(Dmtx, data$subset$meta[[factor]], strata=data$subset$meta[[strata]]); im;
+capture.output(im, file=paste0(output$tests,"ANOSIM-", batch, "~", factor, "_strata=", strata, ".txt"))
+#\-------------------- end of healthy cohorts exam 
+
+
+
+#=================== infected cohorts exam
+# out of curiosity , what is the effect of StudyID in infected microbiomes?
+batch="Infected"
+factor="StudyID"
+data$subset$meta=subset(data$meta, InfectionStatus==batch); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+  Dmtx=vegdist(t(data$subset$adj))
+#gPERMANOVA
+ov=adonis(Dmtx ~ data$subset$meta[[factor]]); ov
+capture.output(ov, file=paste0(output$tests, "gPMVA-" , batch ,"~", factor ,".txt"))
+#ANOSIM
+im <- anosim(Dmtx, data$subset$meta[[factor]]); im;
+capture.output(im, file=paste0(output$tests,"ANOSIM-", batch, "~", factor, ".txt"))
+# seems strata=StudyID would be necessary
+#\- end of curiosity 
+
+# and for AgeCategory and Gender: beta div exam
+batch="Infected"
+strata="StudyID"
+factor="AgeCategory"
+data$subset$meta=subset(data$meta, InfectionStatus==batch); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+  Dmtx=vegdist(t(data$subset$adj))
+#gPERMANOVA
+ov=adonis(Dmtx ~ data$subset$meta[[factor]], strata = data$subset$meta[[strata]]); ov
+capture.output(ov, file=paste0(output$tests, "gPMVA-" , batch ,"~", factor , "_strata=", strata, ".txt"))
+#ANOSIM
+im <- anosim(Dmtx, data$subset$meta[[factor]]:data$subset$meta[[strata]], strata=data$subset$meta[[strata]]); im;
+capture.output(im, file=paste0(output$tests,"ANOSIM-", batch, "~", factor, "_strata=", strata, ".txt"))
+# Age & geneder have no efect on beta diversity
+#\- end of AgeCategory & gender exam for beta div
+
+
+# explore the InfectionStatus, InfectionType, HelminthSpecies, HelminthCohort effects
+batch="all"
+strata="StudyID"
+factor="HelminthCohort"
+  Dmtx=vegdist(t(data$adj))
+  data$meta$HelminthCohort[data$meta$HelminthCohort=="" ]<-"None"
+#gPERMANOVA
+ov=adonis(Dmtx ~ data$meta[[factor]], strata=data$meta[[strata]]); ov #:data$meta[[strata]] , strata=data$meta[[strata]]
+capture.output(ov, file=paste0(output$tests, "gPMVA-" , batch ,"~", factor, "_strata=", strata ,".txt"))
+#pwPERMANOVA
+library(pairwiseAdonis)
+wov=pairwise.adonis2(Dmtx ~ HelminthCohort, data=data$meta, strata=strata); wov #, strata=strata or %in% StudyID depending on case
+capture.output(c("-----------------pairwise permanova:", wov), append = T, 
+               file=paste0(output$tests, "gPMVA-" , batch ,"~", factor, "_strata=", strata ,".txt"))
+#ANOSIM: but one cannot analyze the interaction between factors with ANOSIM, as with PERMANOVA => Rval matters more than p-val here
+  #p-val is also affected by permutations and number of samples ~ group. 
+im <- anosim(Dmtx, data$meta[[factor]], strata= data$meta[[strata]]); im; #, strata=data$meta[[strata]]
+capture.output(im, file=paste0(output$tests,"ANOSIM-", batch, "~", factor ,"_strata=", strata, ".txt"))
+#\-end of Status, Type of Infection and Helminth effects
+
+#need pairwise ANOSIM here for R value of InfectionTypes
+batch="None" #"Single-species, Multi-species
+strata="StudyID"
+factor="InfectionType"
+data$subset$meta=subset(data$meta, InfectionType!=batch); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+data$subset$meta[[factor]]=factor(data$subset$meta[[factor]], levels=unique(data$subset$meta[[factor]]))
+  Dmtx=vegdist(t(data$subset$adj))
+#ANOSIM
+im <- anosim(Dmtx, data$subset$meta[[factor]]: data$subset$meta[[strata]]); im;
+list(levels(data$subset$meta[[factor]]) , im)
+capture.output(list(levels(data$subset$meta[[factor]]) , im), append = T,
+               file=paste0(output$tests,"ANOSIM-", "all", "~", factor, "_strata=", strata, ".txt"))
+
+#\------------------- end of infection explorations
+```
+
+```{r save work}
+save.image("16S-Vis-Helminths_clean.RData")
+```
+
+### Beta diversity
+#prep colors
+```{r colors}
+#Create a distinctive color pallete (a color_vector)
+library(RColorBrewer)
+  qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',] 
+  col_vector = unique(unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals))))
+  n=25 #pick between 2 and 70
+  pie(rep(1,n), col=col_vector, labels = col_vector, cex=0.8)
+  mycol=c("orangered","green", "yellow4", "palegreen4", "orange","blue", "paleturquoise3", "peru", "yellow", 
+          "purple", "royalblue1", "salmon",  "seagreen1" , "seashell3" , "salmon4","pink", "skyblue2", "gray40")
+  pie(rep(1,length(mycol)), col=mycol, labels = mycol, cex=0.8);
+  col=c(mycol, col_vector)
+  pie(rep(1,n), col=col, labels = col, cex=0.8);
+  #col=replace(col_vector, col_vector %in% c("#FFFF99", "#D95F02", "#A6CEE3"), c("yellow","orange", "peachpuff" ))
+  #pie(rep(1,n), col=col, labels = col, cex=0.8);
+  #tol=sample(col_vector, n);   tol
+#Create pch vector that I like (up to 19 values):
+  pich=c(2:20, 1)
+```
+
+
+AMPVIS2 ordinations
+```{r ampvis2 ordination plots}
+output$beta=paste0(output$path, "BetaDiv/")
+dir.create(output$beta)
+data$meta$group1=NULL; data$meta$group2=NULL #just removing columsn which dont matter
+
+
+#========= exploring healthy cohorts
+batch="Uninfected"
+colnames(data$meta); dim(data$meta)
+  data$subset$meta=subset(data$meta, data$meta$InfectionStatus==batch); dim(data$subset$meta)
+  data$subset$adj <- data$adj[, rownames(data$subset$meta)]; dim(data$subset$adj)
+  data$subset$tax= data$tax[ row.names(data$subset$adj), ]; dim(data$subset$tax)
+  
+  data$subset$adjtax=cbind(data$subset$adj, data$subset$tax); dim(data$subset$adjtax)
+  data$subset$meta$SampleID=row.names(data$subset$meta)
+  relocate(data$subset$meta, SampleID) -> data$subset$meta; colnames(data$subset$meta)
+library(ampvis2)
+data$subset$amp=amp_load(data$subset$adjtax, data$subset$meta)
+
+#PCoA plot
+data$subset$amp$metadata$AgeCategory=factor(data$subset$amp$metadata$AgeCategory, levels=lvl$AgeCategory)
+fact1="AgeCategory"
+fact2="Gender"
+
+pcoa_bray <- amp_ordinate(data$subset$amp, filter_species = 0.01, type = "PCOA",
+    distmeasure = "bray", sample_color_by = fact1, sample_shape_by = fact2,
+    detailed_output = TRUE, transform = "none")
+pcoa_bray$plot = pcoa_bray$plot + labs(title=paste(batch, "samples only")) +
+    scale_color_manual(values=col) + scale_shape_manual(values=pich) ; pcoa_bray$plot
+pdf(paste0(output$beta, "PCoA_", batch, "_", fact1,"~" , fact2, ".pdf"), width=8); pcoa_bray$plot; dev.off()
+
+#PERMDISP.A multivariate HOMOGENEITY test. This tests for homogeneity of point distribution on ordination coordinates. It is used in cases PERMANOVA test is significant, but clear location-based clustering is not displayed in the ordination plot. In this test, it is the F && P-values that give meaning to the results. Result cases:
+# 1) If F-value is SMALL (<2) & P-value is high (>0.05): Separation of the groups is based on location and should be visible on an ordination plot (there should be clustering of points). Dispersion of he groups is equal.
+# 2) If F-value is LARGE (>2) & p-value is small (<0.05): the 2 groups are clustering but clusters are laying on top of each other. The groups are distinguished based on their DISPERSION. Non-homogeneous dispersion
+# 3) If F-value is SMALL & p-value is small: the clusters should be visualizing as separated not only by location, but their differences in dispersion should also be visible
+
+    #I am using this test here because I am seeing significant PERMANOVA but clear clusters of points is not visible
+library("vegan")
+batch="Uninfected"
+fact1="StudyID"
+fact2="AgeCategory"
+
+fact0=fact2
+Y <- vegdist(t(data$subset$adj))
+b=betadisper(Y, data$subset$meta[[fact0]]); b
+d=vegan::permutest(b, pairwise = T);d #c=anova(b, permutations=1000); c
+capture.output(d, file=paste0(output$beta, "PCoA_PERMDISP-",batch,"_",  fact0 ,".txt"))
+
+#\-------------------end of healthy cohort exam
+
+
+#==================== infected cohort
+batch="Infected"
+colnames(data$meta); dim(data$meta)
+  data$subset$meta=subset(data$meta, data$meta$InfectionStatus==batch); dim(data$subset$meta)
+  data$subset$adj <- data$adj[, rownames(data$subset$meta)]; dim(data$subset$adj)
+  data$subset$tax= data$tax[ row.names(data$subset$adj), ]; dim(data$subset$tax)
+  
+  data$subset$adjtax=cbind(data$subset$adj, data$subset$tax); dim(data$subset$adjtax)
+  data$subset$meta$SampleID=row.names(data$subset$meta)
+  relocate(data$subset$meta, SampleID) -> data$subset$meta; colnames(data$subset$meta)
+library(ampvis2)
+data$subset$amp=amp_load(data$subset$adjtax, data$subset$meta)
+
+
+
+data$subset$amp$metadata$InfectionType=factor(data$subset$amp$metadata$InfectionType, levels=lvl$InfectionType)
+data$subset$amp$metadata$AgeCategory=factor(data$subset$amp$metadata$AgeCategory, levels=lvl$AgeCategory)
+data$subset$amp$metadata$HelminthSpecies=factor(data$subset$amp$metadata$HelminthSpecies, levels=lvl$HelminthSpecies)
+fact1="HelminthCohort" #HelminthCohort
+fact2="AgeCategory"
+
+#PCoA plot
+pcoa_bray <- amp_ordinate(data$subset$amp, filter_species = 0.01, type = "PCOA",
+    distmeasure = "bray", sample_color_by = fact1, sample_shape_by = fact2,
+    detailed_output = TRUE, transform = "none")
+pcoa_bray$plot = pcoa_bray$plot + labs(title=paste(batch, "samples only")) +
+    scale_color_manual(values=col[-4]) + scale_shape_manual(values=pich) ; pcoa_bray$plot
+pdf(paste0(output$beta, "PCoA_", batch, "_", fact1,"~" , fact2, ".pdf"), width=12, height=10); pcoa_bray$plot; dev.off()
+
+#NMDS plot
+NMDS_bray <- amp_ordinate(data$subset$amp, filter_species = 0.01, type = "NMDS",
+    distmeasure = "bray", sample_color_by = fact1, sample_shape_by = fact2,
+    detailed_output = TRUE, transform = "none")
+NMDS_bray$plot= NMDS_bray$plot + labs(title=paste(batch, "samples only"))+ 
+  scale_color_manual(values = col[-4])+ scale_shape_manual(values = pich);  NMDS_bray$plot
+pdf(paste0(output$beta, "NMDS", batch, "_", fact1,"~" , fact2, ".pdf"), width=14, height=10); NMDS_bray$plot; dev.off()
+
+
+#PERMDISP.A multivariate HOMOGENEITY test. This tests for homogeneity of point distribution on ordination coordinates. It is used in cases PERMANOVA test is significant, but clear location-based clustering is not displayed in the ordination plot. In this test, it is the F && P-values that give meaning to the results. Result cases:
+# 1) If F-value is SMALL (<2) & P-value is high (>0.05): Separation of the groups is based on location and should be visible on an ordination plot (there should be clustering of points)
+# 2) If F-value is LARGE (>2) & p-value is small (<0.05): the 2 groups are clustering but clusters are laying on top of each other. The groups are distinguished based on their DISPERSION. Non-homogeneous dispersion
+# 3) If F-value is SMALL & p-value is small: the clusters should be visualizing as separated not only by location but their differences in dispersion should also be visible
+
+    #I am using this test here because I am seeing significant PERMANOVA but clear clusters of points is not visible
+library("vegan")
+batch="all"
+fact1="InfectionType"
+
+#all sub-groups
+data$subset$meta=data$meta
+data$subset$adj=data$adj
+
+Y <- vegdist(t(data$subset$adj))
+b=betadisper(Y, data$subset$meta$InfectionType); b
+d=vegan::permutest(b, pairwise = T);d #c=anova(b, permutations=1000); c
+list(unique(data$subset$meta$InfectionType), d , "-------------------")
+capture.output(list(unique(data$subset$meta$InfectionType), d , "-------------------"),
+               file=paste0(output$beta, "PCoA_PERMDISP-",batch,"_",  fact1 ,".txt"))
+
+#pairwise permdisp comparisons
+data$subset$meta=subset(data$meta, InfectionType!="Single-species") #data$meta#
+data$subset$adj=data$adj[, rownames(data$subset$meta)]
+
+Y <- vegdist(t(data$subset$adj))
+b=betadisper(Y, data$subset$meta$InfectionType); b
+d=vegan::permutest(b, pairwise = T);d #c=anova(b, permutations=1000); c
+list(unique(data$subset$meta$InfectionType), d , "-------------------")
+capture.output(list(unique(data$subset$meta$InfectionType), d , "-------------------"),
+               file=paste0(output$beta, "PCoA_PERMDISP-",batch,"_",  fact1 ,".txt"), append = T)
+```
+
+
+
+################# AMPVIS2 profiles ############################
+https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html
+```{r profiles as heatmap}
+output$profile=paste0(output$path, "Profiles/")
+dir.create(output$profile)
+
+  data$adjtax=cbind(data$adj, data$tax); dim(data$adjtax)
+  data$meta$SampleID=row.names(data$meta)
+  relocate(data$meta, SampleID) -> data$meta; colnames(data$meta)
+library(ampvis2)
+data$amp=amp_load(data$adjtax, data$meta)
+
+data$amp$metadata$AgeCategory=factor(data$amp$metadata$AgeCategory, levels = lvl$AgeCategory)
+data$amp$metadata$HelminthSpecies=factor(data$amp$metadata$HelminthSpecies, levels = lvl$HelminthSpecies)
+data$amp$metadata$InfectionType=factor(data$amp$metadata$InfectionType, level=lvl$InfectionType)
+
+amp_htmp=amp_heatmap(data$amp, group_by = "AgeCategory", facet_by="HelminthSpecies", 
+                     tax_aggregate = "Species", tax_show=35, plot_values = T, 
+                     plot_values_size = 3, normalise=T, showRemainingTaxa = T, tax_add = "Class") + 
+        theme(axis.text.x = element_text(angle = 45, size=12, vjust = 1),
+        axis.text.y = element_text(size=10), legend.position="right"); amp_htmp
+pdf(paste0(output$profile, "heatmap_AgeCategory~HelminthSpecies.pdf"), width=26, height = 10); print(amp_htmp); dev.off()
+```
+
+```{r save work}
+save.image("16S-Vis-Helminths_clean.RData")
+```
+
+
+#Deseq2 test with multiple conditions at once
+https://www.bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html
+https://lashlock.github.io/compbio/R_presentation.html
+
+```{r deseq2 with single group}
+library(phyloseq); library(vegan); library(ggplot2); library(plyr); library(DESeq2);library(stringr)
+output$diffa=paste0(output$path, "DiffAbund/")
+dir.create(output$diffa)
+
+#What TAXA respond to each Helminth Species?
+Hypothesis="HelminthSpecies"
+abund_table<- data$adj; dim(abund_table)
+OTU_taxonomy=data$tax
+meta_table <- data$meta
+
+groups=Hypothesis
+meta_table$Groups<-factor(as.character(meta_table[[groups[1]]]), levels = lvl[[groups]])
+
+##################### DATA PREP ########################################
+# We will add 1 to the countData otherwise DESeq will fail with the error
+countData = round(as(abund_table, "matrix"), digits = 0)
+countData<-(countData+1); head(countData) #do not transpose, keep samplenames as colnames
+
+#DDS calculation ############################################################
+#reduced formula design at: #https://bityl.co/6OFE. Removing ~batch effect & AgeCategory,
+#As condition is the variable of interest, we put it at the end of the formula. Thus the results function 
+#will by default pull the condition results
+dds <- DESeqDataSetFromMatrix(countData, meta_table, as.formula(~StudyID +AgeCategory + Groups))
+data_deseq_test = DESeq(dds, test="LRT", reduced=~StudyID+AgeCategory);plotDispEsts(data_deseq_test) #, "LRT"|"Wald")
+
+
+## Extract the results
+res = results(data_deseq_test, cooksCutoff = FALSE); res <- res[order(res$padj),];
+head(res); summary(res)
+res_tax = cbind(as.data.frame(res), as.matrix(countData[rownames(res), ]), OTU = rownames(res))
+
+
+#PARAMETERS ###########################
+which_level<-"Species" #Phylum Class Order Family Genus Otus
+height_image=50
+sig = 1e-6 
+fold = abs(2)
+plot.point.size = 2
+label=T
+ntax=16 #number of taxonomies with most signif results, you want displayed
+tax.display = NULL
+tax_rank = "Species"
+
+# APPLY PARAMETERS ###########################
+res_tax_sig = subset(res_tax, padj < sig & fold < abs(log2FoldChange))
+res_tax_sig <- res_tax_sig[order(res_tax_sig$padj),]
+dim(res_tax); dim(res_tax_sig)
+
+
+### Volcano plots
+library(EnhancedVolcano) #https://tinyurl.com/y3syd5vn
+p0=EnhancedVolcano(res_tax, x="log2FoldChange", y="padj",
+                   lab=rownames(res_tax), FCcutoff= fold, pCutoff=sig, 
+                   ylab="-Log10(padj)", titleLabSize = 14, #title=paste(std),
+                   subtitle = NULL, legendLabSize=8 , axisLabSize = 14, labSize = 3); p0
+pdf(paste(output$diffa, "DeSeq2-EnhVolcanoPlot-",Hypothesis ,"AgeAdj-batch=StudyID.pdf", sep=""), height=8, width=8);print(p0); dev.off()
+
+#the DESEQ2 + abundance plot plrep
+### the abundance plot, of significant
+res_tax_sig <- res_tax_sig[1:ntax,]; res_tax_sig[1:7, 1:7] #selecting top ntax number of taxa
+res_tax_sig_abund = cbind(as.data.frame(countData[rownames(res_tax_sig), ]), 
+                          OTU = rownames(res_tax_sig), padj = res_tax[rownames(res_tax_sig),"padj"]) 
+#Apply normalisation (either use relative or log-relative transformation)
+desdata<-log((abund_table+1)/(rowSums(abund_table)+dim(abund_table)[2]))
+desdata<-as.data.frame(t(desdata))
+
+#Now we plot taxa significantly different between the categories
+df<-NULL
+sig_otus<-res_tax[rownames(res_tax_sig),"OTU"]
+
+for(i in sig_otus){
+ tmp<-NULL
+ if(which_level=="Species"){
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(paste(i,gsub(";+$","", paste(sapply(OTU_taxonomy[i,]$Species,as.character),collapse="")))," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ } else {
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(i," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ }
+
+ if(is.null(df)){df<-tmp} else { df<-rbind(df,tmp)} 
+}
+head(df); dim(df)
+colnames(df)<-c("Value","Groups","Taxa"); head(df)
+
+#plot plot plot
+library(ggplot2)
+p<-ggplot(unique(df), aes(Groups, Value, color=Groups)) + ylab("Log-relative normalised") + labs(title=paste(Hypothesis))
+p<- p +  geom_boxplot(outlier.size = 0) + 
+  geom_jitter(position = position_jitter(height = 0, width=0), alpha=0.5) + 
+  facet_wrap( ~ Taxa , scales="free_x", labeller = label_wrap_gen(width=40)) + theme_bw() + #nrow=1
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size = 14), legend.position = "none") + 
+  theme(strip.text.x = element_text(size = 12, colour = "black")); print(p) #, angle = 90
+
+pdf(paste(output$diffa, "DeSeq2-", Hypothesis,"_Top", ntax, "-UNwghtd_AgeAdj-batch=StudyID.pdf", sep=""), 
+    width=20, height=20); print(p); dev.off()
+write.table(df, file = paste0(output$diffa, "DeSeq2-", Hypothesis,"_Top", ntax,
+                          "-UNwghtd_AgeAdj-batch=StudyID.txt" ), quote = F, row.names = F)
+```
+
+
+```{r save work}
+save.image("16S-Vis-Helminths_clean.RData")
+```
+
+#CORRELATION CIRLCE PLOTS BETWEEN TAXA AND NMERIC VARIABLES!!!!!!!
+#Envirinmental will try species correlated to different layers, 
+using http://mixomics.org/graphics/variable-plots/plotvar/
+I think this shows me how strongly correlated different species is with the different environmental variables
++ and - does not matter, it is only for separation of the clusters
+Provides improved clustering 
+```{r circle correlation plots}
+#BiocManager::install("mixOmics")
+library(mixOmics)
+output$cca=paste0(output$path, "CCA/")
+dir.create(output$cca)
+
+data$hmth=read.table(paste0(input$path, "Helminth_abutab.txt"), header = T, row.names = 1)
+data$hmth
+data$hmth=data$hmth[row.names(data$meta) , ]
+data$meta1=cbind(data$meta, data$hmth)
+
+data$tax=data$tax[complete.cases(data$tax$Species), ]; dim(data$tax)
+data$adj=data$adj[ row.names(data$tax), ]
+    data$cca=logratio.transfo(t(data$adj), logratio = "CLR", offset=1); data$cca[1:4, 1:4]
+    #data$cca=log(t(data$adj+1)) # I am using long-transformed here
+colnames(data$cca)=data$tax$Species # Spp names can now become colnames
+dim(data$tax); dim(data$cca)
+colnames(data$meta1)
+
+layer.spls <-spls(data$cca, data$meta1[ , c(9,13, 21:28)], ncomp=2, keepX = c(20,20,20))#, mode="canonical")
+set.seed(123)
+plotVar(layer.spls, overlap = T, cex=c(3, 8), col=c("darkblue", "darkred"))
+     
+pdf(paste(output$cca, "CCA-plot", "-clrlogNORM.pdf", sep=""), height=10, width=10);#output$splsda
+  plotVar(layer.spls, overlap = T, cex=c(3, 5), col=c("darkblue", "darkred"))#, title = " bah")
+dev.off()
+```
+
+### gPERMANOVA & Heterogeneity stats
+#this function (found in the PoorKnight dataset in the support materials of https://onlinelibrary.wiley.com/doi/full/10.1111/ele.12385) is calculates the multivarite dissimilarity-based standard error (multiSE) for a PERMANOVA test, based on the RESIDUAL MeanSq value of the test (which in itself is a measure of error variance); the Permanova test results themselves are not to calculate MeanSq, and thus PERMANOVA's R2 is calculated later. Note: the function can be run on normalized and non-normalized matrix. In the NON-normalized counts matrix, the MeanSq value IS the STANDARD ERROR (PERMANOVA's RESIDUAL MeanSq = MSE) so the MSE function is not even needed.If the PERMANOVA is performed on log-transformed matrix, however, the MSE needs to be calculated with the provided MSC funciton. log-transformed Permanova is more robust (values dont dance around the 0.05 value as much), so should be prefered method of statistical assessment
+#In this case I am not using log-transformed matrix, but in future cases, do transform!!!
+```{r heterogeneity stats}
+library(vegan)
+library(metafor)
+
+output$qtests=paste0(output$path, "qTests/")
+dir.create(output$qtests)
+#important to have all sample files in same order!!!!
+data$adj=data$adj[ , sort(colnames(data$adj))] #sorts headers/colnames
+data$meta <- data$meta[sort(row.names(data$meta)), ] #sorts rows. 
+
+# Here is a function for getting the MSE from a log-transformed PERMANOVA model, given the groups.
+# Note that this can be extended for a more complex design easily by having the input be
+# in the form of a model matrix X directly (instead of a grouping variable).
+   MSE = function(D, group) {
+            D = as.matrix(D)
+            N=dim(D)[1]
+            g=length(levels(factor(group)))
+            X=model.matrix(~factor(group))   #model matrix
+            H=X %*% solve(t(X)%*%X)%*%t(X)   #Hat matrix
+            I=diag(N)                        #Identity matrix
+            A=-0.5*D^2 
+            G=A-apply(A,1,mean)%o%rep(1,N)-rep(1,N)%o%apply(A,2,mean)+mean(A) 
+            MSE=sum(diag((I-H)%*%G))/(N-g)          
+            return(MSE)
+         }
+    # Usage:: MSE(D,factor), like"
+    data$meta$StudyID=factor(data$meta$StudyID)   
+     Y=t(data$adj)#[1:15, 1:15]
+     D = vegdist(Y, method = "bray") # (note: should be log(Y+1)-transformed, followed by Bray-Curtis)
+    o=adonis(D ~ data$meta$StudyID); o; hist(o$f.perms)
+        capture.output(o, file=paste0(output$qtests, "gPMVA-StudyID.txt"))
+    outmse0=MSE(D, data$meta$StudyID); outmse0
+        df0=NULL
+        df0=data.frame(c(o$aov.tab$`Pr(>F)`[1], o$aov.tab$R2[1], outmse0)); df0
+        row.names(df0)<-c("PermanovaPval", "PermanovaR2", "PermanovaMSE");df0
+        colnames(df0)<-"StudyID"
+        df0=t(df0); class(df0); df0
+ma_model_0 <- rma(PermanovaR2, PermanovaMSE, data = df0); summary(ma_model_0)
+forest(ma_model_0, slab = paste(row.names(df0)))
+funnel(ma_model_0, xlab = "Effect Size R2", main="StudyID")# + title(main="Gender")
+    
+    
+ #So now calculate PERMANOVA R2 for factors within each study
+#In this case I am not using log-transformed matrix, but in future cases, do transform!!!
+#Since AgeCategory has only 1 level for Yang_2017, I am putting those last so it doesnt interrupt the loop
+data$meta$StudyID=factor(data$meta$StudyID, levels=c("Jenkins_2017", "Jenkins_2018", "Prommi_2020",
+                                    "Toro-Londono_2019", "Easton_2019", "Rubel_2020", "Yang_2017"))
+study=dput(levels(data$meta$StudyID))
+factor=c("Gender", "HelminthCohort", "HelminthCount", "InfectionStatus", "InfectionType", "AgeCategory")
+  #i="Yang_2017"
+  #j="HelminthCohort"
+
+df=NULL
+for (i in study){
+data$subset$meta=subset(data$meta, StudyID==i); dim(data$subset$meta)
+data$subset$adj=data$adj[, row.names(data$subset$meta)]; dim(data$subset$adj)
+  Y=t(data$subset$adj)
+  D = vegdist(Y, method = "bray") # (note: log(Y+1)-transform, followed by Bray-Curtis)
+    for (j in factor){
+ # data$subset$meta[[j]]=factor(data$subset$meta[[j]])
+  o=adonis(D ~ data$subset$meta[[j]]); o; hist(o$f.perms) #Adonis usually takes Y, but in this case will use D
+    capture.output(o, file=paste0(output$qtests, "gPMVA-", i, "_", j, ".txt"))
+  outmse1=MSE(D, data$subset$meta[[j]]); outmse1
+    capture.output(noquote(c(i, j, o$aov.tab$`Pr(>F)`[1], o$aov.tab$R2[1], outmse1)),
+                 file=paste0(output$qtests, "gPMVA-","R2+MSE.txt"), append = T)
+  df<-rbind(df,data.frame(i,j, o$aov.tab$`Pr(>F)`[1] , o$aov.tab$R2[1], outmse1))
+      }
+}
+ colnames(df)<- c("Study", "Factor", "PermanovaPval", "PermanovaR2", "PermanovaMSE"); df
+
+
+ row.names(df0)=nrow(df0); df0
+ df0=cbind("Study"="allStudies", "Factor"="StudyID", df0) ;df0
+ df0=as.data.frame(df0); df0
+ 
+ data$qtab=rbind(df0, df); class(data$qtab)
+ data$qtab[, 3:5]=sapply(data$qtab[, 3:5], as.numeric); data$qtab
+    
+   data$subset$qtab=data$qtab # or # subset(data$qtab, Factor=="HelminthCohort") #
+#### GETTING FUNNEL PLOTS, BASED ON PERMANOVA R2 AND ITS ERROR VARIANCE RESIDUAL MEANsq value.
+    #ma_model_1 <- rma(yi, vi, data = my_data)  
+    #where yi=R2 are the X values, and vi=MSE values are the Y values
+
+    ma_model_1 <- rma(PermanovaR2, PermanovaMSE, data = data$subset$qtab); summary(ma_model_1)
+
+forest(ma_model_1, slab = paste(data$subset$qtab$Study, data$subset$qtab$Factor, sep = ", "), cex = 0.8)
+    pdf(paste0(output$qtests, "ForestPlot", "-all.pdf"),height=8);
+    forest(ma_model_1, slab = paste(data$subset$qtab$Study, data$subset$qtab$Factor, sep = ", "), cex = 0.8)
+    dev.off()
+
+funnel(ma_model_1, xlab = "Effect Size R2", main="all studies & factors")
+    pdf(paste0(output$qtests, "FunnelPlot", "-all.pdf"));
+    funnel(ma_model_1, xlab = "Effect Size R2", main="all studies & factors")
+    dev.off()
+
+    data$qtab[, 3:5]=sapply(data$qtab[, 3:5], as.numeric); data$qtab
+boxplot(PermanovaR2 ~ Factor, data = data$qtab) + title(main="All factors")
+#gives me an error but it does do as i ask... 
+    pdf(paste0(output$qtests, "BoxPlot", "-all.pdf"), width=12);
+    boxplot(PermanovaR2 ~ Factor, data = data$subset$qtab) + title(main="All factors")
+    dev.off()
+```
+
+
+```{r save work}
+save.image("16S-Vis-Helminths_clean.RData")
+```
+
