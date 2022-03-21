@@ -1,8 +1,15 @@
 ---
 title: "16S-Vis-Helminths"
-output: html_document
+author: "Angelina Angelova"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: console  
 ---
 #Load libraries
 #install.packages("easypackages")
