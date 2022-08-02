@@ -1,0 +1,260 @@
+---
+title: "Dada2Script1-Mrkdown"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+Using BigData Tutorial:
+https://benjjneb.github.io/dada2/bigdata.html
+
+
+```{r prep for argumet parsing}
+library(docopt)
+"Usage: my_program.R [INPUT ...]
+-h --help        show this screen
+--wdir PATH      give path to working dir, e.g. '~/RScripts/Dada2'
+--path PATH      give path to demultiplexed fastq files
+--filtpath PATH  path of a sub-directory to create for filtered fastq files [default: args$path]
+--fwd.ptn PTN    type in pattern for recognition of R1-fastq.gz files. Use quotes. E.g. '_R1_subsampled.fastq.gz'
+--rev.ptn PTN    type in pattern for recogniztion of R2-fastq.gz files. Use quotes. E.g. '_R2_subsampled.fastq.gz'
+--outdir NAME    path to & name of output directory to create [default: paste0(args$path, '/processed']
+-o FILE          name of output dir [default: args$outdir]
+--nthreads       number of threads [default: half the ones from interractive session]
+--taxDB FILE     filname of DB [default: '~/DB-rRNA/RDP/rdp_train_set_16-DADA2.fa.gz']
+--taxDB_species  filneme of DB with species [default: '~/DB-rRNA/RDP/rdp_species_assignment_16-DADA2.fa.gz']
+--decipherDB FILE path & filename of the DECIPHER RData file. [Use quotes.[default: '~/DB-rRNA/RDP/RDP_v16-mod_March2018.RData']
+--trimLeft       number of bases to trim on the left [default: 20]
+--trimRight      number of bases to trim on the right [default: 0]
+--truncLen       number of bases to truncate reads to [default: 0]
+--maxEE          discard reads with expected errors bellow this number [default: 5]
+--trunQ          remove reads with quality below this number [default: 4]
+--minLen         filter out reads of length below this number" -> doc
+docopt(doc)
+args <-docopt(doc)
+args
+
+```
+
+```{r load packages}
+library(ggplot2)
+library(readr)
+library(reshape2)
+library(tidyr)
+library(dada2)
+library(biomformat)
+library(DECIPHER)
+```
+
+```{r set workdir}
+setwd(args$wdir)
+```
+
+```{r load paths and define data}
+#"import" data
+path <- args$path
+filtpath <- args$filtpath
+#file-patterns:
+fwd.ptn=args$fwd.ptn
+rev.ptn=args$rev.ptn
+
+fwd <- list.files(path, pattern=fwd.ptn) # CHANGE if different file extensions
+rev <- list.files(path, pattern=rev.ptn) # CHANGE if different file extensions
+
+
+#create and set output directory
+dir.create(args$outdir)
+outdir=args$o
+```
+
+parameters: will add the rest here in the end
+```{r parameters}
+#threads
+nthread= args$nthreads #DO NOT EXCEED HALF THE NUMBER OF CPUS PROVIDED FOR YOUR interractive session
+
+#taxonomy
+taxDB=args$taxDB
+taxDB_species=args$taxDB_species
+load(args$decipherDB) #for the decipher training set
+
+#for primer trimming (def = 0). Truncation is performed AFTER trimming. Trimming is first
+trimLeft = args$trimLeft
+trimRight = args$trimRight
+
+#for truncation, minLen and exp.Error filtering 
+truncLen= args$truncLen #truncate all reads after # of bases (0 means no truncation); or for PE, do c(#,#) for F&R trunc
+maxEE= args$maxEE #discard reads with expected errors below maxEE
+truncQ= args$trunQ #remove reads at first qual below truncQ
+minLen= args$minLen
+```
+
+```{r inspect quality and make qc plots}
+readqc.fwd=plotQualityProfile(file.path(path,fwd))
+readqc.rev=plotQualityProfile(file.path(path,rev))
+
+qplotheight <- min(2.5*ceiling(length(fwd)/4), 49)
+qplotheight
+
+pdf(paste0(outdir, "qualityProfile-fwd.pdf"), width=16, height=qplotheight); readqc.fwd; dev.off()
+pdf(paste0(outdir, "qualityProfile-rev.pdf"), width=16, height=qplotheight); readqc.rev; dev.off()
+```
+
+```{r filter and trim}
+# Filtering
+filtered=filterAndTrim(file.path(path,fwd), file.path(filtpath,fwd), 
+              file.path(path,rev), file.path(filtpath,rev),
+              compress=TRUE, verbose=TRUE, rm.phix=TRUE,
+              truncLen=truncLen, maxEE=maxEE, truncQ=truncQ, trimLeft = trimLeft,
+              minLen=minLen, multithread=nthread)
+head(filtered)
+```
+
+```{r link filename to sample name with function}
+#for forward reads
+flts.fwd <- list.files(filtpath, pattern = fwd.ptn, full.names = T)
+flts.fwd
+sample.names.fwd<-sapply(strsplit(basename(flts.fwd), "_"), 
+                     function (x) paste(x[1:2], collapse="_"), simplify=F)
+
+#for the reverse
+flts.rev <- list.files(filtpath, pattern = rev.ptn, full.names = T)
+flts.rev
+sample.names.rev<-sapply(strsplit(basename(flts.rev), "_"), 
+                     function (x) paste(x[1:2], collapse="_"), simplify=F)
+
+
+#check if names for F and R are identical
+if(!identical(sample.names.fwd, sample.names.rev)) stop("Forward and reverse files do not match.")
+#if no errors, continue to link the sample names to the fastq file names
+names(flts.fwd) <- sample.names.fwd; sample.names.fwd
+names(flts.rev) <- sample.names.rev; sample.names.rev
+
+```
+where,
+sample.names<-sapply(strsplit(basename(flts.fwd), "_"), 
+                     function (x) paste(x[1:2], collapse="_"), simplify=F)
+basename splits the flts.fwd by components by "_"
+then I do a function for argument x (list), which gets pasted as list (hense the simplify=F), and connected between the first and the second sub-arguments, with "_"
+if I had done paste(x[1], x[2], sep="_"), I would get the same result, but it would have interpreted as "paste the elements of the list separately, and separate them by "_"
+
+```{r learn the error rates, sample inference, merger of PE reads}
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(flts.fwd, nbases=1e8, multithread=nthread)
+# Learn reverse error rates
+errR <- learnErrors(flts.rev, nbases=1e8, multithread=nthread)
+
+#Plot error rates
+errF.plot=plotErrors(errF, nominalQ = T); errF.plot
+errR.plot=plotErrors(errR, nominalQ = T); errR.plot
+pdf(paste0(outdir, "errRate_FWD.pdf")); errF.plot; dev.off()
+pdf(paste0(outdir, "errRate_REV.pdf")); errR.plot; dev.off()
+```
+
+```{r Sample inference and merging}
+#Sample inference & merging
+mergers<- vector("list", length(sample.names.fwd))
+names(mergers)=sample.names.fwd
+mergers
+
+for(sam in sample.names.fwd) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(flts.fwd[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=nthread)
+    derepR <- derepFastq(flts.rev[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=nthread)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+#rm(derepF); rm(derepR)
+
+#Construct seq table
+seqtab<- makeSequenceTable(mergers)
+saveRDS(seqtab, paste0(outdir,"seqtab.rds"))
+```
+
+```{r remove chimeras, assign Taxonomy}
+#merge multiple runs (if necessary)
+#seqtab1<-readRDS("output/seqtab.rds") # to read back the chimeric ASV
+#seqtab2<-readsRDS("ouptu/seqtab1.rds") #and so on
+#seqtab<-mergeSequenceTable(seqtab1, seqtab2)
+
+#remove chimeras
+seqtab<-removeBimeraDenovo(seqtab, method="consensus", multithread=nthread)
+
+#explore some output
+ddF; ddR
+head(mergers[[1]])
+# Inspect distribution of sequence lengths
+table(nchar(getSequences(seqtab)))
+#track reads
+getN <- function(x) sum(getUniques(x))
+track <- cbind(filtered, sapply(mergers, getN), rowSums(seqtab))#sapply(ddF, getN), sapply(ddR, getN),
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+colnames(track) <- c("input", "filtered", "merged", "nonchim") # "denoisedF", "denoisedR",
+rownames(track) <- sample.names.fwd
+head(track)
+write.table(track, paste0(outdir, "readtracker.txt"), sep="\t", col.names = NA)
+
+#assign Taxonomy
+tax<-assignTaxonomy(seqtab, taxDB, multithread = nthread); head(tax)
+tax<-addSpecies(tax, taxDB_species); head(tax)
+
+#assign Taxonomy with DECIPHER
+library(DECIPHER)
+dna<-DNAStringSet(getSequences(seqtab)); head(dna) #creates a DNA string set
+ids<-IdTaxa(dna, trainingSet, strand="both", processors = nthread, verbose=F)
+ranks<-c("domain", "phylum", "class", "order", "family", "genus", "species")
+taxid <- t(sapply(ids, function(x) {
+        m <- match(ranks, x$rank)
+        taxa <- x$taxon[m]
+        taxa[startsWith(taxa, "unclassified_")] <- NA
+        taxa
+}))
+colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab)
+head(taxid)
+
+
+#export
+saveRDS(seqtab, paste0(outdir, "seqtab-nonChimASVs.rds"))
+saveRDS(taxid, paste0(outdir, "tax.rds"))
+```
+
+```{r export final data}
+##creating a COUNTS table (no taxonomy)
+seqtab.print<-(seqtab)
+  colnames(seqtab.print)<-paste0("ASV", 1:ncol(seqtab))
+  head(seqtab.print)
+write.table(t(seqtab.print), paste(outdir, "ASV_counts2.txt"), sep="\t", na="", col.names=NA, quote=F)
+
+
+##creating tab-sep tax table (from assignTaxonomy)
+tax.print<-tax
+  row.names(tax.print)<-paste0("ASV", 1:nrow(tax)) # <-NULL raw.names are the entire ASV sequence => replacing
+  head(tax.print)
+write.table(tax.print, paste0(outdir, "ASV_taxtable2.txt"), sep="\t", col.names=NA, quote = F, na="")
+
+#ASV_fullTable (contains counts+taxonomies in 1)
+asvtab=as.data.frame(cbind(t(seqtab.print), tax.print))
+  head(asvtab)
+write.table(asvtab, paste0(outdir, "ASV_fulltable2.txt"), sep="\t", col.names=NA, quote=F)
+write_biom(asvtab, paste0(outdir, "ASV_fulltable2.biom"))
+
+#creating tab-separated tax table (from DECIPHER)
+taxid.print<-taxid
+  row.names(taxid.print)<-paste0("ASV", 1:nrow(taxid)) # <-NULL raw.names are the entire ASV sequence => replacing
+  head(taxid.print)
+write.table(as.data.frame(taxid.print), paste0(outdir, "ASV_taxIDtable2.txt"), sep="\t", col.names=NA, quote=F)
+
+
+##creating a .fna of the ASVs
+seq.print<-seqtab
+seq.fna=paste(paste0(">ASV", 1:ncol(seq.print)), colnames(seq.print), sep="\n")
+seq.fna
+write.table(seq.fna, paste0(outdir, "ASV_seqs2.fna"), col.names=F, row.names = F, quote = F)
+```
+
+```{r save workspace}
+save.image("Dada2Script1-Mrkdown.RData")
+```
