@@ -1,0 +1,7 @@
+	SampleID	SubjectID	TypeofSample	Treatment	Metadata1	Metadata2
+Undetermined	Undetermined	Undetermined_S0_L001	Undetermined	Control	Und	
+ATCCMSA1002Cntrl	ATCCMSA1002Cntrl	ATCCMSA1002Cntrl_S10_L001	Mock	Control	Mock	
+ATCCMSA2002control	ATCCMSA2002control	ATCCMSA2002control_S8_L001	Mock	Control	Mock	
+Neg	Neg	Neg	NegEXTRctrl	Control	Neg	
+PCRNegcntrl	PCRNegcntrl	PCRNegcntrl_S11_L001	NegPCRctrl	Control	Neg	
+DNAExtrcNegControl	DNAExtrcNegControl	DNAExtrcNegControl_S9_L001	NegDNActrl	Control	Neg	

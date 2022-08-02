@@ -1,0 +1,3061 @@
+---
+title: "16S-Vis-Pipe-v1"
+author: "Angelina Angelova"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    highlight: pygments
+    df_print: kable
+    theme: lumen
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+<style type="text/css">
+  body{
+  font-family: Palatino;
+  font-size: 14pt;
+  }
+  div.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+  }
+</style>
+
+<!-- Other font families I like: Arial Narrow, Optima, Palatino, Gill Sans , Comic Sans, Courier, Bradley Hand
+Font families at: https://www.w3.org/Style/Examples/007/fonts.en.html -->
+<!-- h1 {font-size: 34px;} --> <!-- h1.title {font-size: 38px;} -->
+<!-- h2 {font-size: 30px;} --> <!-- h3 {font-size: 24px;} -->
+<!-- h4 {font-size: 18px;} --> <!-- h5 {font-size: 16px;} -->
+<!-- h6 {font-size: 14px;} -->
+
+```{r global_opions, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.width = 10, fig.height = 10, collapse=T)#, size="small")#
+ library(kableExtra) #http://haozhu233.github.io/kableExtra/awesome_table_in_html.html#HTML_Only_Features
+# df %>% kable("html") %>% kable_styling("striped") %>% scroll_box(width = "100%")
+```
+
+
+
+```{r instalations, include=F}
+# Install packages from CRAN
+# install.packages("devtools")
+library(devtools)
+# install.packages(c("vegan", "metacoder", "taxa", "ggplot2", "dplyr", "readr", "stringr", "agricolae", "ape", "reshape2", "broom", "tidyverse", "GUniFrac", "phangorn", "clustsig", "mixOmix", "scales", "grid", "survival", "data.table", "Biostrings","VennDiagram" ,"RColorBrewer", "biodiversityR"), repos = "http://cran.rstudio.com", dependencies = TRUE)
+# install.packages(c("tcltk2","BiodiversityR"))
+# library(tcltk2) #missing XQuartx
+# library("BiodiversityR") #missing tcltk2
+
+#installing from Bioconductor
+#source('http://bioconductor.org/biocManager')
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+  #install.packages("BiocManager")
+#BiocManager::install(c("phyloseq", "limma", "DESeq2"))
+#BiocManager::install("GO.db"): with no compilation and no update, OK
+#BiocManager::install("preprocessCore")
+#BiocManager::install("impute")
+#install.packages("adespatial")
+
+#Installing from GitHub
+# install.packages("remotes") #requires R version >4.0 and manual BioConductor-dependencies
+# remotes::install_github("umerijaz/microbiomeSeq") 
+# library(microbiomeSeq) # watch for warnings aout S4Vectors and RNeXML
+# remotes::install_github("MadsAlbertsen/ampvis2")
+# install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+
+```
+
+```{r load libraries, include=F }
+#Load libraries
+#install.packages("easypackages")
+#install.packages("fossil")#https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+# x<-c("ggplot2", "reshape2", "broom", "dplyr", "tidyverse", "GUniFrac", "phangorn", "doParallel", "clustsig","scales", "grid", "vegan", "survival",  "data.table","ape", "Biostrings", "RColorBrewer", "devtools","ampvis2", "metacoder", "VennDiagram", "vegan", "limma","taxa",  "readr", "stringr", "phyloseq", "DESeq2", "microbiomeSeq", "morpheus", "htmltools")
+library(easypackages) #can also install multiples with packages()
+x<-c("tidyverse", "ggplot2", "reshape2", "broom", "dplyr", "data.table","ape",
+     "Biostrings", "devtools","ampvis2", "readr", "stringr", "phyloseq", "htmltools", "fossil","pairwiseAdonis")
+libraries(x)
+rm(x)
+# setwd("~/Documents/Collaborations/SuchiHourgan_infants/")
+# getwd() 
+```
+
+
+Set themes and colors
+```{r themes colors, include=F}
+theme_set(theme_bw())
+setwd("./")
+
+#Create a distinctive color pallete (a color_vector)
+library(RColorBrewer)
+  #use default palletes with distinct colors, then extract a vector of uniques in a vector (70 colors)
+  qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',] 
+  col_vector = unique(unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals))))
+  #samle the n # of colors from them
+  n=15 #pick between 2 and 70
+  tol=sample(col_vector, n);   tol
+  pie(rep(1,n), col=tol, labels = tol, cex=0.8)
+  #you can replace similar colors like this
+  #tol=replace(col, col %in% c("#FFFF33", "#FFF2AE", "#B15928"), c("snow1", "deeppink3", "peachpuff"))
+  col=c("deepskyblue1", "palevioletred1", "chocolate2", "seagreen1", "khaki", "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "snow1", tol)
+  pie(rep(1, length(col)), col=col, labels = col, cex=0.8)
+  
+  
+#Create pch gradient that I like (up to 19 values):
+  pich=c(16, 17, 15, 18, 2, 6, 20, 1, 0, 3, 4, 5, 7, 8, 9, 10, 12, 13, 11)
+```
+
+## Loading paths and defining data
+```{r paths and input}
+input=NA
+input$path="~/Documents/CoreMicrobiome/Julianas_V4_OTUtab/date_052322/"
+input$fulltab=paste0(input$path, "dada2/ASV_fulltable.txt")
+input$counts=paste0(input$path, "dada2/ASV_counts.txt")
+input$tax=paste0(input$path, "dada2/ASV_taxtable.txt")
+input$seq=paste0(input$path, "dada2/ASV_seqs2.fna")
+input$meta=paste0(input$path, "metadata.txt")
+
+output=NA
+output$name="plots_16S/"
+output$path=(paste0(input$path, output$name))
+dir.create(output$path)
+
+print(paste("output is at:", output$path))
+```
+
+## Import data
+```{r load data}
+data=NA
+#load counts table
+data$counts=read.table(input$counts, header=T, check.names=F, row.names=1) ; head(data$counts)
+data$counts<-data$counts[ , order(names(data$counts))]; dim(data$counts) #order by column names
+
+#Load the taxonomy (taxonomy_ NOT filtered to flt4)
+tiers=c("Kingdom","Phylum", "Class", "Order", "Family", "Genus", "Species")
+data$tax<-read.table(input$tax, header=T, row.names=1, check.names=FALSE, sep="\t"); dim(data$tax)
+  data$tax
+data$tax = data$tax %>% unite("Species", "Genus":"Species", sep=" ", remove=F) %>% 
+    relocate("Species", .after="Genus") %>% group_by(across(tiers)) %>% 
+    mutate(Species=coalesce(Species, Genus, Family, Order, Class, Phylum, Kingdom))
+data$tax[5:7]
+
+#load counts table 
+data$fulltab=read.table(input$fulltab, header=T, check.names=F, row.names=1) ; head(data$fulltab)
+data$fulltab<-data$fulltab[ , order(names(data$fulltab))]; dim(data$fulltab) #order by column names
+
+#metadata
+data$meta=read.table(input$meta, header=T, check.names = F, sep='\t') ;    data$meta
+data$meta <- data$meta[ order(row.names(data$meta)), ];  head(data$meta) ; dim(data$meta) #Order by row names:
+row.names(data$meta)=data$meta$SampleID
+
+#Load the tree using ape package (use a tree of ALL contigs/OTUs)
+#full_tree <- read.tree("ship_both_cREPSET_ornt_srt1ln_aln2.tre")
+#full_tree = midpoint(full_tree) #rooting tree midpoint; might take quite a while
+
+
+#load OTU sequence fasta (optional) (better use ALIGNED file)
+data$fasta=readDNAStringSet(input$seq); tail(data$fasta)
+```
+
+## Creating ampvis object
+```{r crating ampvis object}
+amp=list()
+amp$fulltab=amp_load(data$fulltab, data$meta)
+```
+
+
+## Separating mock from real samples
+```{r remove mock samples}
+amp$mock=amp_subset_samples(amp$fulltab, Group=="Control")
+amp$real=amp_subset_samples(amp$fulltab, Group!="Control")
+
+```
+
+Rarification curves
+
+```{r rarification}
+#Rarefaction curve per sample
+  pdf(paste0(output$path, "rarefication.pdf"), width=12)
+  rarecurve(t(data$counts), step=100, sample=min(colSums(data$counts)), label=T, xlim=c(0,max(colSums(data$counts))), xlab = "Number of Individuals", ylab = "Number of Species", cex=0.5, col="red", lwd=2)
+  dev.off()
+
+#Species accumulation throughout samples
+  pdf(paste0(output$path, "species_accumulation_curve.pdf"))
+  plot(specaccum(t(data$counts)), xlab='Number of Samples', ylab='Number of Species', lwd=2, col="red")
+  dev.off()
+```
+
+#Filtering & normalizaiton of data outside of phyloseq
+
+```{r filter data}
+print("before filtering stats")
+print(paste(c("#ASVs:", "#samples:") , dim(data$counts)) )
+print(paste("min ASV sum abundance before filtering:", min(rowSums(data$counts))))
+
+#filtering sample below counts/sampling depth:
+minreads=10000
+print(paste("removing samples with less than", minreads, "reads (sample depth)"))
+#print(paste("min sampling depth:", min(colSums(data$counts))))
+sampdepth = max(min(colSums(data$counts)) -1, minreads) #filter samples with at least minreads value or (the min numb of reads in a sample)-1
+data$flt=data$counts[, (colSums(data$counts) >= sampdepth) ]
+a <- which(colSums(data$flt)==min(colSums(data$flt)))
+
+#stats after filtering for sample depth:
+print(paste("remaining numb samples:", dim(data$flt)[2], "out of", dim(data$counts)[2]))
+print(paste("sample with lowest read count now:", names(a), "with", min(colSums(data$counts)), "reads"))
+
+#filtering ASVs appearing less than 5% of samples with count under 2:
+print("removing ASVs with individual abundace <2 and prevalence <5% of samples")
+##filter ASVs for sum abundance above 3
+    #flt=counts[rowSums(counts) >= 3 ,] ; dim(flt) 
+#filter ASVs for indiv abundance >2 and appearing in at least 5% of the samples
+data$flt=data$flt[rowSums(data$flt>2)>= 0.05*length(data$flt),  ]
+b <- which(rowSums(data$flt)==min(rowSums(data$flt)))
+
+print(paste(c("# ASVs after filtering:", "# samples after filtering:") , dim(data$flt)) )
+print(paste("ASV with lowest abunance was", names(b), ", which was represented by a total of", min(rowSums(data$flt)), "reads accross all samples") )
+
+#normalization
+data$freqs <- vegan::decostand(data$flt, method = "total", MARGIN = 2)
+data$freqs[1:8,1:8]
+ apply(data$freqs, 2, sum)# same as colSums(freqs)
+ 
+#create flt-tax table
+  data$tax_flt=data$tax[row.names(data$flt), ];
+```
+
+counts \> 0.1\*length() would filter each value below the given
+threshold -\> is too stringent rowSums(counts) \>= 5 means that
+commulatively ASVs need to have a value equal to or above threshold
+rowSums(counts\>5), will give you same matrix in T/F for criteria
+individual count \>5
+
+###Other summary statistics
+```{r}
+library(dplyr)
+stats=NA
+stats$counts=NA
+stats$counts$x=melt(data$counts)
+stats$counts$totcount=sum(stats$counts$x$value); stats$counts$totcount
+stats$counts$std=round(sd(stats$counts$x$value),2); stats$counts$std
+stats$counts$sumlist=as.list(round(summary(stats$counts$x$value), 2)); stats$counts$sumlist
+stats$counts$density=density(stats$counts$x$value); stats$counts$density=round(max(summary(stats$counts$density$y)), 4); stats$counts$density
+stats$counts$summary=as.data.frame(c(
+                                    "Total number of reads in dataset:", stats$counts$totcount,
+                                    "Min number of reads/ASV", stats$counts$sumlist$Min.,
+                                    "Max number of reads/ASV", stats$counts$sumlist$Max.,
+                                    "Median", stats$counts$sumlist$Median,
+                                    "Mean", stats$counts$sumlist$Mean,
+                                    "standard deviation:", stats$counts$std,
+                                    "Table density", stats$counts$density))
+write.table(stats$counts$summary, paste0(output$path, "counts_summary.txt"), col.names = F, quote=F, row.names = F)
+
+
+stats$flt=NA
+stats$flt$x=melt(data$flt)
+stats$flt$totcount=sum(stats$flt$x$value); stats$flt$totcount
+stats$flt$std=round(sd(stats$flt$x$value),2); stats$flt$std
+stats$flt$sumlist=as.list(round(summary(stats$flt$x$value), 2)); stats$flt$sumlist
+stats$flt$density=density(stats$flt$x$value); stats$flt$density=round(max(summary(stats$flt$density$y)), 4); stats$flt$density
+stats$flt$summary=as.data.frame(c(
+                                    "Total number of reads in dataset:", stats$flt$totcount,
+                                    "Min number of reads/ASV", stats$flt$sumlist$Min.,
+                                    "Max number of reads/ASV", stats$flt$sumlist$Max.,
+                                    "Median", stats$flt$sumlist$Median,
+                                    "Mean", stats$flt$sumlist$Mean,
+                                    "standard deviation:", stats$flt$std,
+                                    "Table density", stats$flt$density))
+write.table(stats$flt$summary, paste0(output$path, "flt_summary.txt"), col.names = F, quote=F, row.names = F)
+
+```
+
+### Alpha diversity indexes
+
+```{r Alpha diversity on filtered samples }
+############ use flt counts   ########################################
+library(vegan)
+alpha=NA
+#Number of individuals per sample & min individuals
+  alpha$reads=colSums(data$flt);   alpha$reads
+  alpha$minindiv=min(colSums(data$flt));   alpha$minindiv
+#Observed species richness and maximum sp. richness:
+  alpha$SpRichness=vegan::specnumber(data$flt, MARGIN = 2);   alpha$SpRichness #number of species
+  alpha$obs_sprch_max=max(vegan::specnumber(data$flt, MARGIN = 2))  
+maxsamp= which(specnumber(data$flt, MARGIN = 2)==max(specnumber(data$flt, MARGIN = 2)))
+print(paste0("maximum number of species in a sample: ", alpha$obs_sprch_max, ". And is in sample: ", names(maxsamp)))
+  #expected species richness and maximum expected:
+  alpha$exp_sprch=rarefy(data$flt, alpha$minindiv, se=F, MARGIN = 2);  #alpha$exp_sprch
+  alpha$exp_sprch_max=max(rarefy(data$flt, alpha$minindiv, se=F, MARGIN = 2));  #alpha$exp_sprch_max
+paste("expected maximum number of species in a sample:", round(alpha$exp_sprch_max,0))
+  
+
+#Shannon, Simpson and Inverse Simpson,  Pielou's Evenness, dominance:
+  alpha$Shannon=vegan::diversity(as.matrix(data$flt), "shannon", MARGIN = 2);   alpha$Shannon
+  alpha$InvSimpson=vegan::diversity(data$flt, "inv", MARGIN = 2);   alpha$InvSimpson
+  alpha$Evenness=alpha$Shannon/log(specnumber(data$flt, MARGIN = 2)); alpha$Evenness #this is Pielou's Evenness index
+  #alpha$Fisher=fisher.alpha(data$flt, MARGIN=2)
+#install.packages("fossil")
+library(fossil) #https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+  alpha$chao1=apply(data$flt, 2, chao1) #fossil::chao1(data$flt, taxa.row = T)
+  
+#Amending the metadata table with the produced indices (based on fltR data)
+      alpha$temp=cbind(alpha$SpRichness, alpha$Evenness, alpha$reads, alpha$Shannon, alpha$InvSimpson, alpha$chao1)#, tree_div)
+colnames(alpha$temp)=c("SpRichness", "Evenness", "NumbReads", "Shannon", "InvSimpson", "chao1")
+      head(alpha$temp)
+      
+      data$meta=cbind(data$meta, round(alpha$temp, 2)) #extending the meta table
+      head(data$meta)      
+```
+
+```{r export data}
+  write.table(data$flt, paste0(output$path, "ASV_counts_flt.txt"), sep="\t", col.names=NA, quote = F, na="")
+  write.table(round(data$freqs, 4), paste0(output$path, "ASV_freqs_flt.txt"), sep="\t", col.names=NA, quote=F, na="")
+  write.table(data$meta, paste0(output$path, "ASV_meta_flt_ext.txt"), sep="\t", col.names=NA, quote=F, na="")
+  
+  data$tax_flt=data$tax[row.names(data$flt), ];
+  write.table(data$tax_flt, paste0(output$path, "ASV_tax_flt.txt"),  sep="\t", col.names=NA, quote=F, na="")
+  
+  data$fasta_flt=data$fasta[row.names(data$flt), ]
+  library(Biostrings)
+  writeXStringSet(data$fasta_flt, paste0(output$path, "ASV_seq_flt.fasta"), append=F, compress=F, format="fasta")
+```
+
+#### Alpha diveristy boxplots & ANOVAs
+
+#do this all at once on each melt, try:
+<https://stackoverflow.com/questions/37902978/one-way-anova-for-each-sub-group-in-a-melted-data-frame>
+
+```{r alpha boxplots}
+library(ggsignif)
+######   one code to rule them all:
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+  sst=NA
+for (i in groups){
+  data$meta$group=data$meta[[i]]
+  sst$sst=subset(data$meta, select=c(9:15))
+  sst$melt=melt(as.data.table(sst$sst), id.var="group"); tail(sst$melt)
+
+  p1=ggplot(sst$melt, aes(group, value)) + 
+    geom_boxplot(aes(x=group, y=as.numeric(as.character(value)), fill=group)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=paste("Alpha diveristy: ", i)) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=90, hjust=0.5, size=10), legend.position = "none"); p1
+  n<-length(unique(data$meta$group))
+  p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                    # map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, "ns"=1),
+                     step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+                 
+  qplotheight <- min(2.5*ceiling(length(data$flt)/3), 10)
+  
+  pdf(paste0(output$path,"AlphaDiv-", i, ".pdf"), width=14, height=qplotheight)
+  print(p2) #needs the print() for inside loop
+  dev.off()
+
+ #ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   capture.output(sst$models, file=paste0(output$path,"AlphaDiv-", i, "-ANOVA.txt"))
+}
+
+  colnames(data$meta)
+  sst$sst=subset(data$meta, select=c(2,4,9:14))
+  sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ Duration + Duration/TreatmentGroup, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   sst$models
+  capture.output(sst$models, file=paste0(output$path,"AlphaDiv-","Duration-TratmentGroup", "-ANOVA.txt"))
+```
+
+Error in var(if (is.vector(x) \|\| is.factor(x)) x else as.double(x),
+na.rm = na.rm) : Calling var(x) on a factor x is defunct. Use something
+like 'all(duplicated(x)[-1L])' to test for a constant vector.
+
+#Grouped boxplots for alpha diversity
+
+```{r}
+colnames(data$meta)
+  data$meta$group=data$meta$Duration
+  sst$sst=subset(data$meta, select=c(2,4, 9:14))
+  sst$melt=melt(as.data.table(sst$sst), id.var=c("Duration", "TreatmentGroup")); (sst$melt)
+
+  p1=ggplot(sst$melt, aes(Duration, value)) + 
+    geom_boxplot(aes(x=Duration, y=as.numeric(as.character(value)), fill=TreatmentGroup)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=paste("Alpha diveristy")) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=90, hjust=0.5, size=10), legend.position = "right", 
+          legend.title=element_text(size=12), legend.text=element_text(size=10)); p1
+  library(ggsignif)
+  n<-length(unique(data$meta$Duration))
+  p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                      step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+  pdf(paste0(output$path,"AlphaDiv-", "Duration~", "TreatmentGroup.pdf"), width=14, height=qplotheight)
+  print(p2); dev.off() #needs the print() for inside loop
+
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ Duration + TreatmentGroup + TreatmentGroup/Duration, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   sst$models
+   capture.output(sst$models, file=paste0(output$path,"AlphaDiv-", "TreatmentGroup~Duration", "-ANOVA.txt"))  
+
+```
+
+m\<-length(unique(data$meta$TreatmentGroup)) p3= p1 +
+geom_signif(comparisons=combn(rep(1:m, n), 2, simplify=F),
+test="t.test",# map_signif_level = T, #or F for actual p-values or
+map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, "
+"=1), step_increase = 0.05, color="gray60", tip_length = 0.01, vjust =
+0.55); p3
+
+### gPERMANOVA, pwPERMANOWA
+
+<http://cc.oulu.fi/~jarioksa/softhelp/vegan/html/adonis.html>
+
+```{r PERMANOVA ANOSIM}
+###### GLOBAL PERMANOVA
+#important to have all sample files in same order!!!!
+data$flt=data$flt[ , sort(colnames(data$flt))] #sorts headers/colnames
+data$meta <- data$meta[sort(row.names(data$meta)), ] #sorts rows. 
+
+  #Adonis = global PERMANOVA from the vegan package, used on Bray-Curtis dissimilarity matrix
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  a=adonis(t(data$flt)~data$meta[[i]]); a
+  capture.output(a, file=paste0(output$path, "gPERMANOVA~", i , ".txt"))
+}
+
+  c=adonis(t(data$flt) ~ 
+             data$meta$Duration +
+             data$meta$TreatmentGroup +
+             data$meta$Duration/data$meta$TreatmentGroup + 
+             data$meta$Duration/data$meta$SubjectID+
+             data$meta$TreatmentGroup/data$meta$SubjectID); c
+capture.output(c, file=paste0(output$path, "gPERMANOVA~" , "all.txt"))
+##### PAIRWISE PERMANOVA #####
+        # PREPARE pair-wise function. To create a function "pairwise PERMANOWA" run step 1 script
+#pairwise.adonis <- function(x,factors, sim.function = 'daisy', sim.method = 'gower', p.adjust.m ='BH')
+  pairwise.adonis <- function(x,factors, sim.function="vegdist",sim.method="bray",p.adjust.m='BH')
+                {
+                library(vegan)
+                co = combn(unique(as.character(factors)),2)
+                pairs = c()
+                F.Model =c()
+                R2 = c()
+                p.value = c()
+                for(elem in 1:ncol(co)){
+                if(sim.function == 'daisy'){
+                library(cluster); x1 = daisy(x[factors %in% c(co[1,elem],co[2,elem]),],metric=sim.method)
+                } else{x1 = vegdist(x[factors %in% c(co[1,elem],co[2,elem]),],method=sim.method)}
+                ad = adonis(x1 ~ factors[factors %in% c(co[1,elem],co[2,elem])], permutations = 9999);
+                pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+                F.Model =c(F.Model,ad$aov.tab[1,4]);
+                R2 = c(R2,ad$aov.tab[1,5]);
+                p.value = c(p.value,ad$aov.tab[1,6])
+                }
+                p.adjusted = p.adjust(p.value,method=p.adjust.m)
+                sig = c(rep('',length(p.adjusted)))
+                sig[p.adjusted <= 0.05] <-'.'
+                sig[p.adjusted <= 0.01] <-'*'
+                sig[p.adjusted <= 0.001] <-'**'
+                sig[p.adjusted <= 0.0001] <-'***'
+                pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted,sig)
+                print("Signif. codes: 0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1")
+                return(pairw.res)
+                }
+
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  e=pairwise.adonis(t(data$flt), data$meta[[i]]); e
+capture.output(e, file=paste0(output$path, "pwPERMANOVA~", i , ".txt"))
+}
+```
+
+### Beta diversity: nMDS (without biofit)
+
+The biofit functionality requires a lot of customization for each study,
+so I am removing that part of the analysis
+
+```{r NMDS}
+#recap of color choices
+#col=c("deepskyblue1", "palevioletred1", "orange", "seagreen1", "khaki", "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "snow1", tol)
+ # pie(rep(1, length(col)), col=col, labels = col, cex=0.8)
+  
+library(vegan)
+set.seed(11)#8
+
+abund.mds.bray=vegan::vegdist(t(data$flt), method = "bray")
+abund.mds.bray=vegan::monoMDS(abund.mds.bray, k=2, model="global")
+#abund.mds.bray= vegan::metaMDS(t(data$flt), dist="bray", trymax = 200)
+stressplot(abund.mds.bray) #ordination fit plot (stressplot); the less blue-dot scatter around the red line, the better
+ordiplot(abund.mds.bray, display= "sites", type = "text")
+
+groups=colnames(data$meta)[c(2,4)]
+pdf(paste0(output$path, "nMDS~bray", ".pdf"), height=qplotheight, width = qplotheight)
+        mds.figure=ordiplot(abund.mds.bray, type = "points")#, ylim= c(-1,1), xlim=c(-0.75,1)) #makes empty  plot
+        IvSp=data$meta$InvSimpson
+        ordisurf(abund.mds.bray~IvSp, main="",col="darkgrey", add = TRUE)
+       
+            #points infos
+    co=as.factor(data$meta[[4]]); col.gr=col #c("red", "orange", "green", "blue") 
+    ar=as.factor(data$meta[[2]]); pch.gr=pich #c(15, 16, 18, 17)
+    #bg=ssu$meta$TimeOfExposure; bg.gr=c("#D2B48C", "#F4A460", "#CD853F", "#8B4513")
+          #then plot the points:
+    points(mds.figure, "sites", col=col.gr[co], pch=pch.gr[ar], cex=2)# lwd=1.75,
+          #and legends 
+        legend(x="bottomright", legend=levels(co), pch=19, col = col.gr, cex=1, pt.lwd = 2, bg="white smoke")
+        legend(x="bottomleft", legend=levels(ar), pch=pch.gr, cex=1, pt.lwd = 2.5, pt.bg="white", bg="white smoke")
+        #legend(x="bottomright", legend=levels(bg), pch=21, cex=1.2, lwd=0, pt.bg = bg.gr, bg="white smoke")
+        legend(x="topright", legend = c("InvSimpson Diversity",
+                              paste("nMDS stress = ", round(abund.mds.bray$stress, digits = 4))),
+               cex=0.8, text.col=c("darkgray", "darkgray", "azure3"), bg="white smoke",
+               col=c("gray", "darkgray", "dim gray"), pch = c("~", ""))
+dev.off()
+
+
+######### ANOSIM ######
+data$flt.bray<-vegdist(t(data$flt)) #Bray-Curtix dissimilarity matrix
+
+  groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  asm=anosim(data$flt.bray, data$meta[[i]]); summary(asm)
+capture.output(summary(asm), file=paste0(output$path, "ANOSIM~", i , ".txt"))
+} 
+```
+
+as a loop:
+groups=colnames(data$meta)[c(2,4)] for (i in groups){ pdf(paste0(output$path,
+"nMDS\~", i, ".pdf"), height=qplotheight, width = qplotheight)
+mds.figure=ordiplot(abund.mds.bray, type = "points")#, ylim= c(-1,1),
+xlim=c(-0.75,1)) #makes empty plot IvSp=data$meta$InvSimpson
+ordisurf(abund.mds.bray\~IvSp, main="",col="darkgrey", add = TRUE)
+
+            #points infos
+    co=as.factor(data$meta[[i]]); col.gr=c("red", "orange", "green", "blue") #how do I select # of col to match # of factors? Need a color vec with # col matching # of factors
+    #ar=as.factor(data$meta[[i]]); pch.gr=c(0,1,2,6)#(21,22,23)
+    #bg=ssu$meta$TimeOfExposure; bg.gr=c("#D2B48C", "#F4A460", "#CD853F", "#8B4513")
+          #then plot the points:
+    points(mds.figure, "sites", col=col.gr[co], pch= 19, lwd=1.75, cex=3)# pch=pch.gr[ar],
+          #and legends 
+        legend(x="bottomright", legend=levels(co), pch=19, col = col.gr, 
+               cex=1, pt.lwd = 2, bg="white smoke")
+        #legend(x="bottomleft", legend=levels(ar), pch=pch.gr, 
+         #      cex=1, pt.lwd = 2.5, pt.bg="white", bg="white smoke")
+        #legend(x="bottomright", legend=levels(bg), pch=21, 
+         #      cex=1.2, lwd=0, pt.bg = bg.gr, bg="white smoke")
+        legend(x="topright", legend = c("InvSimpson Diversity",
+                              paste("nMDS stress = ", round(abund.mds.bray$stress, digits = 4))),
+               cex=0.8, text.col=c("darkgray", "darkgray", "azure3"), bg="white smoke",
+               col=c("gray", "darkgray", "dim gray"), pch = c("~", ""))
+
+dev.off() }
+
+
+###Heatmap/profiles with AMPVIS2
+<https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html>
+
+```{r profiles as heatmap}
+data$taxdf=data$tax_flt
+data$taxdf$Species[data$taxdf$Species==""]<- "sp."; head(data$taxdf)
+data$taxdf$Species<-paste(data$taxdf$Genus, data$taxdf$Species); head(data$taxdf)
+data$taxdf$Species[data$taxdf$Species==" sp."]<-paste(data$taxdf$Family, "sp."); head(data$taxdf)
+data$taxdf$Species[data$taxdf$Species==" sp."]<-paste(data$taxdf$Order, "sp.");
+data$taxdf
+
+data$futab=cbind(data$flt, data$taxdf)
+meta=cbind(row.names(data$meta), data$meta)
+colnames(meta)[1]<- "SampleID"
+head(meta)
+library(ampvis2)
+data$amp=amp_load(data$futab, meta)
+
+#rarefication curve #2 (one with ampvis2)
+rarecurve <- amp_rarecurve(data$amp, color_by = "Duration",facet_by = "TreatmentGroup")
+pdf(paste0(output$path, "rarefication_v2.pdf"), width=16); rarecurve; dev.off()
+rarecurve
+
+#PCoA plot
+pcoa_bray <- amp_ordinate(data$amp, filter_species = 0.01, type = "PCOA",
+    distmeasure = "bray", sample_color_by = "TreatmentGroup",
+    detailed_output = TRUE, transform = "none", sample_shape_by = "Duration")
+pcoa_bray$plot
+pdf(paste0(output$path, "PCoA~", "bray", ".pdf")); pcoa_bray$plot; dev.off()
+
+nmds_bray <- amp_ordinate(data$amp, filter_species = 0.01, type = "NMDS",
+    distmeasure = "bray", sample_color_by = "TreatmentGroup",
+    detailed_output = TRUE, transform = "none", sample_shape_by = "Duration")
+nmds_bray$plot
+pdf(paste0(output$path, "NMDS~", "bray-ampvis", ".pdf")); pcoa_bray$plot; dev.off()
+
+
+# morpheus heatmap
+data$amptax <-amp_subset_samples(data$amp, normalise = TRUE)
+#devtools::install_github('cmap/morpheus.R')
+library(morpheus); library(htmltools)
+columns=list(colnames(data$amptax$abund))
+rows=list(row.names(data$amptax$abund))
+data$heatmap <- morpheus::morpheus(data$amptax$abund, Rowv=NULL, Colv=NULL,
+    colorScheme = list(scalingMode = "fixed", stepped = FALSE),
+    columnAnnotations = data$amptax$metadata, rowAnnotations = data$amptax$tax)
+data$heatmap
+save_html(data$heatmap, paste0(output$path, "heatmap.html"), background="white", libdir=paste0(output$path, "heatmap"))
+
+## ampvis heatmap (not bad!)
+library(ampvis2)
+amp_htmp=amp_heatmap(data$amp, group_by = "TreatmentGroup", facet_by="Duration", 
+                     tax_aggregate = "Species", tax_show=35, plot_values = T, 
+                     plot_values_size = 2, normalise=T, showRemainingTaxa = T, 
+                     tax_add = "Class") + 
+  theme(axis.text.x = element_text(angle = 45, size=10, vjust = 1),
+        axis.text.y = element_text(size=8), legend.position="right"); amp_htmp
+pdf(paste0(output$path, "amp_heatmap.pdf")); print(amp_htmp); dev.off()
+```
+
+Heatmap/profiles for mock samples
+<https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html>
+
+```{r profiles as heatmap for mock samples}
+dim(data$mock); rowSums(data$mock)
+#no need for meta table on mock samples
+
+#if you wish to select only specific mock samples
+#data$undetermined=subset(data$mock, select=5)
+#data$mock=subset(data$mock, select=-5); colnames(data$mock)
+
+
+#filter ASVs for indiv abundance >2 and appearing in at least 5% of the samples
+data$mock=data$mock[rowSums(data$mock>2)>= 0.05*length(data$mock),  ]
+b <- which(rowSums(data$mock)==min(rowSums(data$mock)))
+print(paste(c("Numb ASVs in mock samples:") , dim(data$mock))[1] )
+
+#filter out ASVs that belong to mock samples
+data$mock_tax=data$tax[row.names(data$mock), ]
+dim(data$mock_tax)
+#prep tax table for mock samples
+data$mock_tax$Species[data$mock_tax$Species==""]<- "sp."; head(data$mock_tax)
+data$mock_tax$Species<-paste(data$mock_tax$Genus, data$mock_tax$Species); head(data$mock_tax)
+data$mock_tax$Species[data$mock_tax$Species==" sp."]<-paste(data$mock_tax$Family, "sp."); head(data$mock_tax)
+data$mock_tax$Species[data$mock_tax$Species==" sp."]<-paste(data$mock_tax$Order, "sp.");
+data$mock_tax
+
+#counts+tax table
+data$mocktab=cbind(data$mock, data$mock_tax)
+#no need for meta table
+library(ampvis2)
+data$mockamp=amp_load(data$mocktab)#, data$meta)
+
+#morpheus heatmap 
+data$mockamp_tax <-amp_subset_samples(data$mockamp, normalise = TRUE)
+#devtools::install_github('cmap/morpheus.R')
+library(morpheus); library(htmltools)
+columns=list(colnames(data$mockamp$abund))
+max(rowSums(data$mockamp$abund))
+rows=list(row.names(data$mockamp$abund))
+data$mock_heatmap <- morpheus::morpheus(data$mockamp$abund, Rowv=NULL, Colv=NULL,
+    colorScheme = list(scalingMode = "fixed", stepped = FALSE), rowAnnotations = data$mockamp$tax)
+data$mock_heatmap
+save_html(data$mock_heatmap, paste0(output$path, "ATCC-heatmap.html"), background="white", libdir=paste0(output$path, "ATCC-heatmap"))
+
+#ampvis2 heatmaps
+library(ampvis2)
+amp_mock=amp_heatmap(data$mockamp, tax_aggregate = "Species", tax_show=35, 
+                     plot_values = T, plot_values_size = 2, normalise=T, 
+                     showRemainingTaxa = T, tax_add = "Class") + 
+  theme(axis.text.x = element_text(angle = 45, size=10, vjust = 1),
+        axis.text.y = element_text(size=8), legend.position="right"); amp_mock
+pdf(paste0(output$path, "amp_MOCK_heatmap.pdf")); print(amp_mock); dev.off()
+```
+
+#### Differential abundance:DESeq2 \### fixed\*\*\*
+
+```{r deseq2}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(plyr)
+library(DESeq2)
+library(stringr)
+#Separate samples based on Treatment Group, DESeq based on Duration
+data$WTmeta=data$meta %>% filter(TreatmentGroup %in% "H2M3_WT"); dim(data$WTmeta)
+data$WTabund=data$flt[, row.names(data$WTmeta)]; dim(data$WTabund)
+
+data$KOmeta=data$meta %>% filter(TreatmentGroup %in% "H2M3_KO"); dim(data$KOmeta)
+data$KOabund=data$flt[, row.names(data$KOmeta)]; dim(data$KOabund)
+
+#change things here to the Treatment Group you need
+Hypothesis="H2M3_WT"
+abund_table<- data$WTabund
+OTU_taxonomy=data$taxdf
+meta_table <- data$WTmeta
+groups=c("Duration") #"TreatmentGroup" ive separated the Duration out
+meta_table$Groups<-factor(as.character(data$WTmeta[[groups[1]]]))
+##################### DATA PREP ########################################
+# We will add 1 to the countData otherwise DESeq will fail with the error
+countData = round(as(abund_table, "matrix"), digits = 0)
+countData<-(countData+1) #do not transpose, keep samplenames as colnames
+head(countData)
+#DDS calculation ############################################################
+dds <- DESeqDataSetFromMatrix(countData, meta_table, as.formula(~ Groups))
+data_deseq_test = DESeq(dds, test="Wald", fitType="parametric")
+
+## Extract the results
+res = results(data_deseq_test, cooksCutoff = FALSE); res <- res[order(res$padj),];
+head(res)
+summary(res)
+res_tax = cbind(as.data.frame(res), as.matrix(countData[rownames(res), ]), OTU = rownames(res))
+
+
+#PARAMETERS ###########################
+which_level<-"Otus" #Phylum Class Order Family Genus Otus
+height_image=50
+sig = 0.05
+fold = 2
+#log2FoldChange = This guy is a col of res_tax
+plot.point.size = 2
+label=F
+ntax=15 #number of taxonomies with most signif results, you want displayed
+tax.display = NULL
+tax_rank = "Species"
+
+# APPLY PARAMETERS ###########################
+res_tax_sig = subset(res_tax, padj < sig & fold < abs(log2FoldChange))
+res_tax_sig <- res_tax_sig[order(res_tax_sig$padj),]
+dim(res_tax); dim(res_tax_sig)
+## Plot the data
+### MA plot
+res_tax$Significant <- ifelse(rownames(res_tax) %in% rownames(res_tax_sig) , "Yes", "No")
+res_tax$Significant[is.na(res_tax$Significant)] <- "No"
+colnames(res_tax)
+
+
+p1 <- ggplot(data = res_tax, aes(x = log2FoldChange, y=-log10(pvalue), color = Significant)) +
+  geom_point(size = plot.point.size) + scale_y_log10() + scale_color_manual(values=c("black", "red")) +
+  labs(x = "-log10(pvalue)", y = "Log2 fold change", title=paste(Hypothesis, "samples")) + theme_bw(); p1
+pdf(paste(output$path, "DeSeq2-VolcanoPlot-",Hypothesis ,".pdf", sep=""));
+print(p1); dev.off()
+
+p2 <- ggplot(data = res_tax, aes(x=baseMean, y= log2FoldChange, color = Significant)) +
+  geom_point(size = plot.point.size) + scale_x_log10() + scale_color_manual(values=c("black", "red")) +
+  labs(x = "Mean Abundance", y = "Log2 fold change", title=paste(Hypothesis, "samples")) + theme_bw(); p2
+pdf(paste(output$path, "DeSeq2-MeanAbundPlot-",Hypothesis ,".pdf", sep=""));
+print(p2); dev.off()
+
+dim(res_tax_sig)
+
+
+### the REAL plot, if there is significance
+res_tax_sig <- res_tax_sig[1:ntax,]; dim(res_tax_sig) #selecting top ntax number of taxa
+res_tax_sig_abund = cbind(as.data.frame(countData[rownames(res_tax_sig), ]), 
+                          OTU = rownames(res_tax_sig), padj = res_tax[rownames(res_tax_sig),"padj"]) 
+
+#Apply normalisation (either use relative or log-relative transformation)
+desdata<-log((abund_table+1)/(rowSums(abund_table)+dim(abund_table)[2]))
+desdata<-as.data.frame(t(desdata))
+
+#Now we plot taxa significantly different between the categories
+df<-NULL
+sig_otus<-res_tax[rownames(res_tax_sig),"OTU"]
+
+for(i in sig_otus){
+ tmp<-NULL
+ if(which_level=="Otus"){
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(paste(i,gsub(";+$","", paste(sapply(OTU_taxonomy[i,]$Species,as.character),collapse=";")))," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ } else {
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(i," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ }
+
+ if(is.null(df)){df<-tmp} else { df<-rbind(df,tmp)} 
+}
+head(df); dim(df)
+colnames(df)<-c("Value","Groups","Taxa"); head(df)
+
+library(ggplot2)
+
+p<-ggplot(df, aes(Groups, Value, color=Groups)) + ylab("Log-relative normalised") + labs(title=Hypothesis)
+p<- p +  geom_boxplot(outlier.size = 0) + 
+  geom_jitter(position = position_jitter(height = 0, width=0), alpha=0.5) + 
+  facet_wrap( ~ Taxa , scales="free_x",nrow=1) + theme_bw() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size = 14), legend.position = "none") + 
+  theme(strip.text.x = element_text(size = 12, colour = "black", angle = 90)); print(p)
+
+pdf(paste(output$path, "DeSeq2-", Hypothesis,"-Top", ntax, "ASVs-",groups[[1]], ".pdf", sep=""), width=ceiling((length(sig_otus)*120/200)+2.6), height=length(sig_otus)); print(p); dev.off()
+
+```
+
+##Differential abundance with MaAsLin2
+<https://huttenhower.sph.harvard.edu/maaslin/> Citation: Himel Mallick,
+Lauren J. McIver, Ali Rahnavard, Siyuan Ma,Yancong Zhang, Long H.
+Nguyen1, Timothy L. Tickle, George Weingart, Boyu Ren, Emma Schwager,
+Ayshwarya Subramanian, Yiren Lu, Levi Waldron, Joseph N. Paulson, Eric
+A. Franzosa, Hector Corrada Bravo, Curtis Huttenhower. "Multivariable
+Association in Population-scale Meta-omics Studies".
+
+```{r maaslin2}
+#if(!requireNamespace("BiocManager", quietly = TRUE))
+ #   install.packages("BiocManager")
+#BiocManager::install("Maaslin2")
+library(Maaslin2)
+fit_dat=Maaslin2::Maaslin2(input_data = data$flt, input_metadata = data$meta, output = paste0(output$path, "maaslin-test"), fixed_effects = c("TreatmentGroup", "Duration"))
+
+
+```
+
+###Not needed: #Krona plots from mock samples
+
+```{r mock samples with Krona tools}
+dim(data$mock)
+#filter ASVs for indiv abundance >2 and appearing in at least 5% of the samples
+data$mock=data$mock[rowSums(data$mock>2)>= 0.05*length(data$mock),  ]
+b <- which(rowSums(data$mock)==min(rowSums(data$mock)))
+print(paste(c("Numb ASVs in mock samples:") , dim(data$mock))[1] )
+
+#filter out ASVs that belong to mock samples
+data$mock_tax=data$tax[row.names(data$mock), ]
+dim(data$mock_tax)
+
+cntrls=NA
+cntrls$ATCCMSA1002=data$mock[, 1]; head(cntrls$ATCCMSA1002)
+cntrls$ATCCMSA2002=data$mock[, 2]; head(cntrls$ATCCMSA2002)
+
+cntrls$ATCCMSA1002=cbind(cntrls$ATCCMSA1002, data$mock_tax); head(cntrls$ATCCMSA1002)
+cntrls$ATCCMSA2002=cbind(cntrls$ATCCMSA2002, data$mock_tax); head(cntrls$ATCCMSA2002)
+
+
+write.table(cntrls$ATCCMSA1002, sep="\t", file=paste0(output$path, "ATCCMSA1002.txt"), quote = F, row.names = F)
+write.table(cntrls$ATCCMSA2002, sep="\t", file=paste0(output$path, "ATCCMSA2002.txt"), quote = F, row.names = F)
+
+#make sure to remove quotes, put a hastag on header and remove Contig#\t with "Contig.*?\t" in the text files
+
+```
+
+Krona profiles for real samples
+<https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html>
+
+```{r profiles of samples as krona plot}
+#install_github("cpauvert/psadd")
+#library(psadd)
+data$flt
+data$tax_flt
+#plot_krona(phy, plaste0(output$path, "krona"), Duration)
+
+dir.create(paste0(output$path, "krona"))
+samp=colnames(data$flt)
+for (i in samp){
+data$krona1=cbind(data$flt %>% select(i), data$taxdf)
+write.table(data$krona1, sep="\t", file=paste0(output$path,"krona/", i, "-krona.txt"), quote = F, row.names = F)
+}
+#in terminal here, run "ktImportText ~/Documents/CoreMicrobiome/SkinCollonization/trimmed_15/processed/ouput-16Svis/krona/*.txt"
+
+x="~/Documents/exe_Scripts_sh/ktImportText ~/Documents/CoreMicrobiome/SkinCollonization/trimmed_15/processed/ouput-16Svis/krona/*.txt"
+cat(x)
+system2(x) #not sure why not working
+```
+
+### Creating a phyloseq object:
+```{r merging all files into a phyloseq object}
+#Convert the data components to phyloseq objects & combine
+phy=NA
+library(phyloseq)
+phy$OTU = otu_table(as.matrix(data$flt), taxa_are_rows = T); head(data$flt);    sample_names(phy$OTU)
+phy$MET = sample_data(data$meta);                                               head(sample_data(phy$MET))
+phy$TAX = tax_table(as.matrix(data$taxdf));                                   tax_table(phy$TAX)[1:3]
+
+#combine all cleaned samples
+phy$phy<-merge_phyloseq(phyloseq(phy$OTU, phy$TAX), phy$MET, data$fasta)
+print(phy$phy) #have 526 phys
+
+#NORMALIZE: convert filtered OTUs from counts to frequencies
+phy$phyfrq=transform_sample_counts(phy$phy, function(x) 100*x/sum(x)) #normalize to 100%
+#print("check normalization for a few of the samples")
+  colSums(otu_table(phy$phyfrq)[,1:8]) #should =100
+```
+
+#### THE POINT WHERE THINGS GO BAD or untested:
+
+#Phyloseq selecting top 25 unique taxa (for plotbars and further
+analysis):
+
+```{r selecting top25 unique taxa}
+#may I possibly be able to plot directly from
+library(microbiome) #https://mibwurrepo.github.io/Microbial-bioinformatics-introductory-course-Material-2018/composition-plots.html
+data$futab
+ggplot(data$futab) + geom_bar(aes(color=NULL, fill=Genus), stat='identity', position='stack') 
+
+col
+#starting point:
+phy
+
+ #Domain: agglomerate for domain, merge samples, fix groups, normalize
+phy$phy_genus=tax_glom(phy$phy, taxrank="Genus"); phy$phy_genus #phylo object agglom @domain
+phy$phy_cond=merge_samples(phy$phy_genus, "TreatmentGroup")
+sample_data(phy)$Conition=levels(sample_data(phy$phy_cond)$Duration)
+#dom1=transform_sample_counts(dom1, function(x) 100*x/sum(x))
+#Plot object
+#pdf("pk_output/profiles/pk_domains.pdf")
+plot_bar(phy$phy_genus, fill='Genus', x="Duration", facet_grid = ~TreatmentGroup) + #x="Duration,
+  geom_bar(aes(color=NULL, fill=Genus), stat='identity', position='stack') + #ylim(0,100) + scale_x_discrete('Duration')+
+  #scale_fill_manual(guide=guide_legend(ncol=8, nrow=10)) + #values=c(col),
+  theme(text=element_text(size=12), strip.text.x = element_text(size=11), axis.text.x = element_text(angle=90, hjust=0.5, size=11), legend.position = "bottom") + ggtitle("Genus distribution per TreatmentGroup") 
+#dev.off()
+    
+  #Species: agglomerate for species, merge samples, fix groups, normalize
+myphy_pk_sp=tax_glom(myphy_pk, taxrank="species"); myphy_pk_sp #agglom abe species = 233 species, orders=120
+pk30_names=names(sort(taxa_sums(myphy_pk_sp), T)[1:30]); pk30_names #extract top 30 bact sp
+myphy_pk30=prune_taxa(pk30_names, myphy_pk); myphy_pk30 #prune orig to only 25 bact sp.
+    cbind(otu_table(myphy_pk30), tax_table(myphy_pk30))
+          #merge, fix layers, normalize
+myphy_pk30merged=merge_samples(myphy_pk30, "Layer")
+sample_data(myphy_pk30merged)$Layer=levels(sample_data(myphy_pk)$Layer)
+myphy_pk30merged=transform_sample_counts(myphy_pk30merged, function(x) 100*x/sum(x))
+    cbind(t(otu_table(myphy_pk30merged)), tax_table(myphy_pk30merged))
+write.table(cbind(t(otu_table(myphy_pk30merged)), tax_table(myphy_pk30merged)), sep="\t", file="pk_exported/pk_tax+freq_30abe_sp.txt")
+
+#Plot repaired object with domain separation
+pdf("pk_output/profiles/pk_top30abe_species1.pdf", width=15, height=8)
+plot_bar(myphy_pk30merged, x="Layer", fill='species', facet_grid=~domain) + geom_bar(aes(color=NULL, fill=species), stat='identity', position='stack') + ylim(0,100) + scale_x_discrete('Depth')  + scale_fill_manual(guide=guide_legend(ncol=1), values=c(col_vector)) + theme(text=element_text(size=18), strip.text.x = element_text(size=16), axis.text.x = element_text(angle=0, hjust=0.5, size=16))# + ggtitle("Top 30 abundant microbial species") 
+dev.off()
+```
+
+Determining lottery winners (niche characterizers) for the plastisphere
+
+```{r}
+library(phyloseq)
+library(ggplot2)
+library(ggrepel)
+library(vegan)
+
+#PARAMETERS ###########################
+#physeq<-import_biom("../../Data/feature_w_tax.biom")
+#meta_table<-read.csv("../../Data/meta_data.csv",header=T,row.names=1)
+which_level="family" #Genus Family Order Class Phylum
+low_abundant_OTUs_threshold=0.01
+should_we_rarefy_the_abund_table=TRUE
+minimum_members_per_taxa=3 #default is 5
+ind_level=0.02 #default is 0.9
+lottery_width=10
+lottery_height=10
+#/PARAMETERS ###########################
+
+abund_table<-t(ssu$counts)
+dim(abund_table)
+
+OTU_taxonomy<-as.data.frame(ssu$tax)
+OTU_taxonomy
+#colnames(OTU_taxonomy)<-c("domain", "kingdom","phylum","class","order","family","genus","otus")
+
+meta_table=sample_data(ssu_phy)
+
+dim(abund_table)
+dim(meta_table)
+dim(OTU_taxonomy)
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+#/DATA IMPORT############################################################
+
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+#In the hypothesis space, all you need is to select the rows in meta_table you are interested in
+#and then allocate a column to meta_table$Groups that you want to use.
+
+label="PlasticTypeI"
+meta_table<-meta_table[meta_table$PlasticTypeI %in% c( "PP", "PE", "PET"),]
+#The colours in the the next instruction match the factors for meta_table$Groups
+meta_table$Groups<-factor(meta_table$PlasticTypeI)
+meta_table$Groups
+colours <- c( "#18A188", "#6F63BB", "tomato", 
+  #Next colors are for lines mainly used in the PCoA script
+  "#000080","#4876FF","#CAE1FF","#9FB6CD","#1E90FF","#00F5FF","#00C957",grey.colors(1000));
+
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+
+# function to perform pre-filtering, and for lottery system, we need to get rid of 0.05 of the OTUs
+# http://mixomics.org/mixmc/pre-processing/
+low.count.removal = function(
+  data, # OTU count data frame of size n (sample) x p (OTU)
+  percent=0.01 # cutoff chosen
+){
+  keep.otu = which(colSums(data)*100/(sum(colSums(data))) > percent)
+  data.filter = data[,keep.otu]
+  return(list(data.filter = data.filter, keep.otu = keep.otu))
+}
+result.filter = low.count.removal(abund_table, percent=low_abundant_OTUs_threshold)
+abund_table = result.filter$data.filter
+
+#We rarefy the abundance_table
+if(should_we_rarefy_the_abund_table){
+  abund_table<-vegan::rrarefy(abund_table,min(rowSums(abund_table)))
+}
+
+#First step is to find the list of OTUs at which_level that are neither empty, nor uncultured
+list_of_taxa=unique(OTU_taxonomy[,which_level])
+list_of_taxa
+
+#Remove "<NA>", from the list_of_taxa
+list_of_taxa<-list_of_taxa[grepl("",list_of_taxa)]
+list_of_taxa
+
+#Generate another list which qualifies minimum_numbers_per_taxa threshold
+indices=c()
+for(i in 1:length(list_of_taxa)){
+  #Get the list of OTUs that belong to
+  if(nrow(OTU_taxonomy[OTU_taxonomy[,which_level] %in% list_of_taxa[i],])>=minimum_members_per_taxa){
+    if(is.null(indices)){indices=c(i)}else{indices=c(indices,i)}
+  }
+}
+list_of_taxa<-list_of_taxa[indices]
+list_of_taxa
+
+#Now calculate the parameters for lottery system
+df<-NULL
+for(i in 1:length(list_of_taxa)){
+  #We go through each clade that is represent by i, and extract the list of OTUs in that clade
+  list_of_OTUs=rownames(OTU_taxonomy[OTU_taxonomy[,which_level] %in% list_of_taxa[i],])
+  #We go through each group
+  for(j in levels(meta_table$Groups)){
+      #Extract the abundance table for the taxa at level j
+      at_j<-as.matrix(abund_table[meta_table$Groups==j,list_of_OTUs])
+      #Get rid of any sample in which the OTUs are not represented
+      at_j<-at_j[rowSums(at_j)>0,,drop=F]
+      #Calculate relative abundance of OTUs at a given taxa at level j
+      at_j_rel<-at_j/rowSums(at_j)
+      select_winner_OTU<-NULL
+      select_winner_OTU_count<-0
+      select_winner_OTU_ind<-NULL
+      for(k in colnames(at_j_rel)){
+        ind<-at_j_rel[,k]>ind_level
+        if(sum(ind)>select_winner_OTU_count){
+          select_winner_OTU_count<-sum(ind)
+          select_winner_OTU<-k
+          select_winner_OTU_ind<-ind
+          }
+      }
+      if(!is.null(select_winner_OTU)){
+        winner_prevalence=sum(select_winner_OTU_ind)/length(select_winner_OTU_ind)
+        winner_diversity=vegan::diversity(at_j[select_winner_OTU_ind,select_winner_OTU,drop=F])
+        maximum_diversity=vegan::diversity(rep(1/sum(select_winner_OTU_ind),sum(select_winner_OTU_ind)))
+        normalised_winner_diversity=winner_diversity/maximum_diversity
+        if(select_winner_OTU_count>1){
+          tmp<-data.frame(Clade=list_of_taxa[i],Groups=j,Winner_prevalence=winner_prevalence,Normalised_winner_diversity=normalised_winner_diversity)
+          if(is.null(df)){df<-tmp} else {df<-rbind(df,tmp)}
+        }
+      }
+    }
+  }
+
+#Reference:http://www.sthda.com/english/wiki/ggplot2-texts-add-text-annotations-to-a-graph-in-r-software
+df
+
+
+pdf(paste("processed/null_n_lottery/Lottery_model_",as.character(low_abundant_OTUs_threshold),"_",as.character(should_we_rarefy_the_abund_table),"_",as.character(minimum_members_per_taxa),"_",which_level,"_",label,".pdf",sep=""),width=lottery_width,height=lottery_height)
+p<-ggplot(df, aes(Winner_prevalence, Normalised_winner_diversity))
+p<-p+geom_point()+theme_minimal()
+p + geom_label_repel(aes(label = Clade,
+                         fill = Groups), color = 'white',segment.colour='gray',
+                     size = 3.5) +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values=colours)+
+  xlab("Winner Prevalence (scaled to 1)")+
+  ylab("Normalised Winner Diversity (scaled to 1)")
+dev.off()
+```
+
+#### Differential abundance:microbiomeSeq
+```{r differential abundance}
+#Script for finding log2 fold different species using DESeq2
+#load libraries in this order
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+#library(plyr); 
+#library(dplyr)
+library(DESeq2)
+library(stringr)
+library(microbiomeSeq)
+
+
+#DeSeq2 differential abundance analysis
+#based on environment:
+taxrank="Species"
+phy$phy_glom=taxa_level(t(phy$phy), taxrank); phy$phy_glom
+
+groups=c("TreatmentGroup", "Duration")
+sample_data(phy$phy_glom)$group=as.factor(sample_data(phy$phy)[[groups[2]]])
+
+deseq_sig <- differential_abundance((phy$phy_glom), 
+    grouping_column = as.factor("group"), output_norm = "log-relative", 
+    pvalue.threshold = 0.05, lfc.threshold = 0, filename = F)
+
+p <- plot_signif(deseq_sig$plotdata, top.taxa = 10) + theme(legend.position = "none")
+print(p)
+
+pdf(paste0(output$path, "DeSeq2-", groups[[2]], '-', taxrank, '.pdf'),
+    width=sum(qplotheight, 10), height=qplotheight);
+print(p); dev.off()
+write.table(deseq_sig$plotdata, file=paste0(output$path, "DeSeq2-", groups[[1]], '-', taxrank, ".txt"), sep="\t")
+```
+
+Core microbiome from microbiome R package: microbiome
+<https://microbiome.github.io/tutorials/Core.html>
+
+```{r core microbiome}
+#BiocManager::install("microbiome")
+library(microbiome)
+
+#glom at species level
+level="class" #"species"
+ssu_phy_sp=taxa_level(ssu_phy, level)
+
+#subsample (if needed)
+sub="Estuary" #of the environment, or say "global"
+#ssu_phy_sp_sub = ssu_phy_sp
+ssu_phy_sp_sub <- subset_samples(ssu_phy_sp, Environment == "Estuary") 
+
+
+#converting to relative abundance data 
+pseq.rel <- microbiome::transform(ssu_phy_sp_sub, "compositional")
+head(otu_table(pseq.rel))
+colSums(otu_table(pseq.rel)[,1:9]) #should =1
+
+#calculates prevalance (how many (%) samples each OTU gets detected in), based on % abundance (detection)
+prv=prevalence(pseq.rel, detection = 1/100, sort = TRUE, count = TRUE) #shows # of samples in which OTU is 1%
+head(prv)
+prv=prevalence(pseq.rel, detection = 1/100, sort = TRUE, count = F) #shows # of samples in which OTU is 1%
+head(prv)
+
+#taxa that exceeds given prevalence: 1% compositional abundance threashold
+#detection is the % of samples
+core.taxa.standard <- core_members(pseq.rel, detection = 1/100, prevalence = 10/100)
+core.taxa.standard
+
+#a full phyloseq object of the core microbiota, at 90% compositional threshold
+pseq.core <- core(pseq.rel, detection = 1/100, prevalence = 1/100)
+
+#collapse onto tax level: error, not finidnign funciton aggregate_rate. Omit step
+  # pseq.core2 <- aggregate_rare(pseq.rel, "species", detection = 0, prevalence = .5)
+
+#obtaining taxa names from the phyloseq object
+core.taxa <- microbiome::taxa(pseq.core)
+
+#total core abundance and diversity
+core.abundance <- sample_sums(core(pseq.rel, detection = .01, prevalence = .95))
+
+
+#Use core line plots to deterine the abundance/prevalence threasholds with blanket analysis
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(0.01, 10, .05)
+ #ggplot(d) + geom_point(aes(x, y)) + scale_x_continuous(trans="log10", limits=c(NA,1))
+
+p=plot_core(pseq.rel, prevalences = prevalences, detections = det, plot.type = "lineplot") + xlab("Relative Abundance (%)"); p #Not sure but think it means ~60 taxa can describe my core
+#pdf("processed/core_microbiome/core_line_plot.pdf"); p; dev.off()
+
+
+#Core microbiome heatmap
+library(RColorBrewer)
+prevalences <- seq(.05, 1, .05)
+detections <- 10^seq(log10(1e-3), log10(.2), length = 22)
+
+p <- plot_core(pseq.rel, plot.type = "heatmap", 
+             prevalences = prevalences,
+             detections = detections,
+         colours = rev(brewer.pal(5, "Spectral")),
+         min.prevalence = .2, horizontal = TRUE) ; print(p)
+pdf(paste0("processed/core_microbiome/core-heatmap~", sub,"-", level, ".pdf"), width=10); print(p); dev.off()
+
+```
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_microbiome
+code\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ Dirichlet Multinomial
+Mixtures : communitity typing
+<https://microbiome.github.io/tutorials/DMM.html> 2020-04-06 Community
+typing with Dirichlet Multinomial Mixtures Dirichlet Multinomial
+Mixtures (DMM) (Quince et al. 2012) is a probabilistic method for
+community typing (or clustering) of microbial community profiling data.
+It is an infinite mixture model, which means that the method can infer
+the optimal number of community types. Note that the number of community
+types is likely to grow with data size.
+
+```{r how many types of communities describe my data}
+library(microbiome)
+#BiocManager::install("DirichletMultinomial")
+library(DirichletMultinomial)
+library(reshape2)
+library(magrittr)
+library(dplyr)
+
+# Load example data
+ssu_phy
+
+# To speed up, only consider the core taxa
+# that are prevalent at 1% relative abundance in 50% of the samples
+# (note that this is not strictly correct as information is
+# being discarded; one alternative would be to aggregate rare taxa)
+pseq.rel <- microbiome::transform(ssu_phy, "compositional")
+taxa <- core_members(pseq.rel, detection = 0.1/100, prevalence = 1/100)
+pseq <- prune_taxa(taxa, ssu_phy)
+
+#aggregate at species
+pseq=taxa_level(pseq, "species")
+
+# Pick the OTU count matrix
+# and convert it into samples x taxa format
+dat <- abundances(pseq)
+count <- as.matrix(t(dat))
+
+#Fit the DMM model. Let us set the maximum allowed number of community types to 3 to speed up the example.
+
+fit <- mclapply(1:3, dmn, count = count, verbose=TRUE)
+#Check model fit with different number of mixture components using standard information criteria
+
+lplc <- sapply(fit, laplace) # AIC / BIC / Laplace
+aic  <- sapply(fit, AIC) # AIC / BIC / Laplace
+bic  <- sapply(fit, BIC) # AIC / BIC / Laplace
+plot(lplc, type="b", xlab="Number of Dirichlet Components", ylab="Model Fit")
+#lines(aic, type="b", lty = 2)
+#lines(bic, type="b", lty = 3)
+#Pick the optimal model
+best <- fit[[which.min(lplc)]]
+
+#Mixture parameters pi and theta
+mixturewt(best)
+#Sample-component assignments
+ass <- apply(mixture(best), 1, which.max)
+
+#Contribution of each taxonomic group to each component
+for (k in seq(ncol(fitted(best)))) {
+  d <- melt(fitted(best))
+  colnames(d) <- c("OTU", "cluster", "value")
+  d <- subset(d, cluster == k) %>%
+     # Arrange OTUs by assignment strength
+     arrange(value) %>%
+     mutate(OTU = factor(OTU, levels = unique(OTU))) %>%
+     # Only show the most important drivers
+     filter(abs(value) > quantile(abs(value), 0.8))     
+
+  p <- ggplot(d, aes(x = OTU, y = value)) +
+       geom_bar(stat = "identity") +
+       coord_flip() +
+       labs(title = paste("Top drivers: community type", k))
+  print(p)
+}
+
+pdf("processed/contributors/contributors.pdf"); print(p); dev.off()
+```
+
+### Filter data within phyloseq
+
+Exporting of data will happen later (stpe 6)
+
+```{r filter select and normalize subsets data}
+#FILTER: filter out OTUs seen less than 3 times from all samples (counts <3) and in less than 20% of the samples
+#ssu_phy <-phyloseq::filter_taxa(ssu_phy, function(x) sum(x>5) > 0.1*length(x), T)
+#print(ssu_phy) #left with 295 ASVs left!!!
+```
+
+#### PROFILES barplots
+Phyloseq selecting top 25 unique taxa (for plotbars and further
+analysis):
+
+```{r selecting top25 unique taxa}
+  library(RColorBrewer)
+  n=25
+  qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+  col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+  set.seed(1)  
+  col=sample(col_vector, n)
+  pie(rep(1,n), col=col)
+
+#starting point:
+phy$phy
+taxrank="Genus"
+theme_set(theme_bw())
+   
+  #Agglomerate for taxrank, merge samples, fix groups, normalize
+phy$phy_glom=tax_glom(phy$phy, taxrank=taxrank); phy$phy_glom #67 taxa left
+phy$names=names(sort(taxa_sums(phy$phy_glom), T)[1:n]); phy$names #extract top N bact sp
+phy$phy_pruned=prune_taxa(phy$names, phy$phy_glom); phy$phy_pruned #prune orig to only N sp
+
+groups=c("WaterOrigin", "WaterMass")
+#for (i in groups){
+phy$phy_merged=merge_samples(phy$phy_pruned, "WaterMass")
+sample_data(phy$phy_merged)$groups[[2]]=levels(sample_data(phy$phy_pruned)$groups[[2]])
+phy$phy_merged=transform_sample_counts(phy$phy_merged, function(x) 100*x/sum(x))
+
+p1=plot_bar(phy$phy_merged, x= groups[[2]], fill=taxrank)  +
+  geom_bar(aes(color=NULL, fill=taxrank), stat='identity', position='stack') + ylim(0,300) +
+  scale_x_discrete(groups[[2]])  + facet_grid(groups[[2]] ~ Kingdom, scale = "free") +
+  scale_fill_manual(name=paste("Normalized top", n , "SSUs"), guide=guide_legend(ncol=1), values=c(col)) +
+  theme(text=element_text(size=18), strip.text.x = element_text(size=16),
+        axis.text.x = element_text(angle=90, hjust=0.5, size=16),
+        legend.text = element_text(face="italic"));  print(p1)
+
+#pdf(paste0(output$path, "Profile-top", n ,"SSUs-in-", i, "-at-", taxrank, ".pdf"), width=14, height=qplotheight); print(p1); dev.off()
+#}
+```
+
+#Save your workspace and environment:
+
+```{r}
+save.image('R_data.RData')
+```
+
+----------------------- other code -------------------------------------------
+
+NMDS plots with biofit:
+```{r NMDS plot with orisurf}
+#find significant drivers
+library(microbiomeSeq)
+class=taxa_level(t(myphy), which_level = "class") #LOWER CLASSIFICATION TAKES TOO LONG AND CRASHES
+        dim(otu_table(class))
+
+wis_fsc=sample_names(class)
+wis_fsc$counts=as.data.frame(otu_table(class))
+wis_fsc$wis_fsc=wisconsin(wis_fsc$counts)
+wis_fsc$meta=sample_data(class)
+dim(wis_fsc$counts)
+
+#important to have all samples in order!!!!
+wis_fsc$counts=wis_fsc$counts[ , sort(colnames(wis_fsc$counts))] #sorts headers/colnames
+wis_fsc$meta <- wis_fsc$meta[sort(row.names(wis_fsc$meta)), ] #sorts rows
+
+library(sinkr)
+set.seed(2)
+res.biobio1 = bvStep(wis_fsc$wis_fsc, wis_fsc$wis_fsc) #the first is the fixed matrix, the second is used as the "variables" matrix (environmental)
+res.biobio1 #thats my best subset of variables that best explains the biotic structure of my samples
+capture.output(res.biobio1, file= "R_output/nMDS/biobio1_seed2.txt")
+
+set.seed(5)
+res.biobio2 = bvStep(wis_fsc$wis_fsc, wis_fsc$wis_fsc, var.always.include = c(2,8,10,12))
+res.biobio2
+capture.output(res.biobio2, file= "R_output/nMDS/biobio2_seed5.txt")
+#repeated variables are most significant
+
+
+#FSC all samples
+mono.bray=vegdist(t(data$counts), k=2, method="bray")
+mono.bray=monoMDS(mono.bray, model="hybrid")
+mono.bray$stress
+ordiplot(mono.bray, display="sites", type="text", ylim=c(-2,2))
+
+is <- as.numeric(data$meta$InvSimp)
+col.wm <- c("orange", "red", "lightblue", "darkblue")
+sf.wm <- factor(data$meta$Water.Mass)
+sf.seas <- factor(data$meta$Season)
+pchs.seas <- c(2,6)
+
+bio.keep = as.numeric(unlist(strsplit(res.biobio2$order.by.best$var.incl[1], ",")))
+bio.fit = envfit(mono.bray, wis_fsc$wis_fsc[,bio.keep], perm=999)
+bio.fit
+capture.output(bio.fit, file = "R_output/nMDS/biofilt.txt")
+
+
+pdf("R_output/nMDS/FSC_nMDS3.pdf")
+
+ordiplot(mono.bray, type="none", xlim=c(-2.0, 2.0))
+ordisurf(mono.bray~is, main="",col="lightgrey", add = TRUE)
+
+points(mono.bray, display = "sites", pch = pchs.seas[sf.seas], col = col.wm[sf.wm])
+plot(bio.fit, col="gray50", cex=0.6, font=4, p.max = 0.05) + # display only those with p>0.1
+  
+legend("topright", legend=levels(sf.wm), bty = "n", col= col.wm, pch = c(16), cex=1)
+legend("bottomright", legend = levels(sf.seas), bty = "n", col = "black", pch=pchs.seas)
+
+ordiellipse(mono.bray, data$meta$Water.Core, conf= 0.70, label =F , col=c("darkorange3", "blue"))
+legend("topleft", legend = levels(data$meta$Water.Core), bty = "n", col = c("darkorange3", "blue"), pch=1)
+legend(x="bottomleft", legend = c("gradient = Inv. Simpson ", paste("stress = ", round(mono.bray$stress, digits = 4))),
+       text.col= "azure4", cex = 0.6)# , pch=c("",""))
+dev.off()
+```
+
+
+#profiles for Krona Toolz
+THOSE ARE PROFILES FOR KRONA PER CLUSTER
+FOR PER SAMPLE, DO BY HAND
+```{r for Krona tools}
+################      FSC       #############
+myphy_gn=tax_glom(myphy, taxrank="genus")
+myphy_gn
+
+#merge samples per group-of-interest, with abundances being sumed but metadata info being averaged
+myphy_wc=merge_samples(t(myphy_gn), "Water.Core", fun=mean)
+myphy_wm=merge_samples(t(myphy_gn), "Water.Mass", fun=mean)
+
+
+#extract abundance table and transpose it, for easier access
+krona=as.list(sample_names(myphy))
+krona$wc=t(otu_table(myphy_wc)); krona$wc
+krona$wm=t(otu_table(myphy_wm)); krona$wm
+
+# create the matrixes for Krona
+#krona$wc$AWC=cbind(krona$wc[ , 1], tax_table(myphy_gn))
+#krona$wc$NWC=cbind(krona$wc[ , 2], tax_table(myphy_gn))
+
+#extract text file (removing quotes, colnames and rownames)
+write.table(cbind(krona$wc[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC-AWC.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$wc[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC-NWC.txt", row.names = F, quote=F, col.names=F)
+  #ktImportText FSC-AWC.txt FSC-NWC.txt -o FSC-WCs.html
+
+
+write.table(cbind(krona$wm[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC~MNAW.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$wm[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC~NAW.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$wm[ ,3], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC~NSAIW.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$wm[ ,4], tax_table(myphy_gn)), sep="\t", file="R_output/krona/FSC~NSDW.txt", row.names = F, quote=F, col.names=F)
+  # ktImportText FSC~NAW.txt FSC~MNAW.txt FSC~NSAIW.txt FSC~NSDW.txt -o FSC~4WMs.html
+
+################      AWC       #############
+myphy_AWC_gn=tax_glom(myphy_AWC, taxrank="genus"); myphy_AWC_gn
+
+#merge samples per group-of-interest, with abundances being sumed but metadata info being averaged
+myphy_AWC_wm=merge_samples(t(myphy_AWC_gn), "Water.Mass", fun=mean)
+myphy_AWC_season=merge_samples(t(myphy_AWC_gn), "Season", fun=mean)
+
+#extract abundance table and transpose it, for easier access
+krona=as.list(sample_names(myphy))
+krona$AWC$seasons=t(otu_table(myphy_AWC_season)); krona$AWC$seasons[1:5, 1:2]
+krona$AWC$wm=t(otu_table(myphy_AWC_wm)); krona$AWC$wm[1:5, 1:2]
+
+write.table(cbind(krona$AWC$seasons[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/AWC-Fall.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$AWC$seasons[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/AWC-Spring.txt", row.names = F, quote=F, col.names=F)
+  #ktImportText AWC-Spring.txt AWC-Fall.txt -o AWC-Seasons.html
+
+write.table(cbind(krona$AWC$wm[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/AWC-MNAW.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$AWC$wm[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/AWC-NAW.txt", row.names = F, quote=F, col.names=F)
+  #ktImportText AWC-NAW.txt AWC-MNAW.txt -o AWC-WMs.html 
+
+################      NWC       #############
+myphy_NWC_gn=tax_glom(myphy_NWC, taxrank="genus"); myphy_NWC_gn
+
+#merge samples per group-of-interest, with abundances being sumed but metadata info being averaged
+myphy_NWC_wm=merge_samples(t(myphy_NWC_gn), "Water.Mass", fun=mean)
+myphy_NWC_season=merge_samples(t(myphy_NWC_gn), "Season", fun=mean)
+
+
+#extract abundance table and transpose it, for easier access
+krona=as.list(sample_names(myphy))
+krona$NWC$seasons=t(otu_table(myphy_NWC_season)); krona$NWC$seasons[1:5, 1:2]
+krona$NWC$wm=t(otu_table(myphy_NWC_wm)); krona$NWC$wm[1:5, 1:2]
+
+write.table(cbind(krona$NWC$seasons[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/NWC-Fall.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$NWC$seasons[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/NWC-Spring.txt", row.names = F, quote=F, col.names=F)
+  #ktImportText NWC-NSAIW.txt NWC-NSDW.txt -o NWC-WMs.html 
+
+write.table(cbind(krona$NWC$wm[ , 1], tax_table(myphy_gn)), sep="\t", file="R_output/krona/NWC-NSAIW.txt", row.names = F, quote=F, col.names=F)
+write.table(cbind(krona$NWC$wm[ , 2], tax_table(myphy_gn)), sep="\t", file="R_output/krona/NWC-NSDW.txt", row.names = F, quote=F, col.names=F)
+  #ktImportText NWC-Spring.txt NWC-Fall.txt -o NWC-Seasons.html
+```
+
+
+#UniFrac based on GUniFrac fraction, Permanova, PLANKTONIC
+    The GUniFrac package can also be used to calculate unifrac distances and has additional features. Unifrac distances are traditionally calculated on either presence/absence data (1), or abundance data(2). The former (1) can be affected by PCR and sequencing errors leading to a high number of spurious and usually rare OTUs, and the latter(2) can give undue weight to the more abundant OTUs. GUniFrac's methods include use of a parameter alpha that controls the weight given to abundant OTUs and also a means of adjusting variances.
+    The function GUniFrac requires a rooted tree, but unlike phyloseq's ordination function will not try to root an unrooted one. We will apply mid-point rooting with the midpoint function from the phangorn package
+```{r calculating UniFrac using the GUniFrac package}
+#have the tree inserted before phylo-object OTU filtering
+
+#add tree of filtered sequences (if available)
+tree<- ape::read.tree(file="R_output/export_tables/sequences_flt_aln.tre")
+tree = phytools::midpoint.root(tree)
+myphy=merge_phyloseq(myphy, tree)
+
+
+#Prep unifrac distances
+transp=as.matrix(t(otu_table(myphy)))
+unifracs <- GUniFrac(transp, tree , alpha = c(0, 0.5, 1))$unifracs
+
+# We can extract a variety of distance matrices with different weightings.
+d1 <- unifracs[, , "d_1"]  # Weighted UniFrac
+d0 <- unifracs[, , "d_0"]  # GUniFrac with alpha 0
+d5 <- unifracs[, , "d_0.5"]  # GUniFrac with alpha 0.5
+ 
+# use vegan's cmdscale function to make a PCoA ordination from a distance matrix.
+pcoa <- cmdscale(d1, k = nrow(transp) - 1, eig = TRUE, add = TRUE); pcoa$eig
+p<-plot_ordination(myphy, pcoa, color="Water.Mass",shape="Season", title="Weighted Unifrac") + 
+  geom_point(size=5)+ theme_bw() + 
+  xlab(paste("Axis.1 [ ", round(100*pcoa$eig[1:1], digits=1), "%  ]")) +
+  ylab(paste("Axis.2 [ ", round(100*pcoa$eig[2:2], digits=1), "%  ]")); p
+pdf("R_output/UniFracs/FSC:AWC~NWC_wGUniFrac.pdf"); print(p); dev.off()
+
+ 
+pcoa <- cmdscale(d0, k = nrow(transp) - 1, eig = TRUE, add = TRUE); pcoa$eig
+p<-plot_ordination(myphy, pcoa, color="Water.Mass", title="Unweighted Unifrac", shape="Season") +
+  geom_point(size=5)+ theme_bw() + 
+  xlab(paste("Axis.1 [ ", round(100*pcoa$eig[1:1], digits=1), "%  ]")) +
+  ylab(paste("Axis.2 [ ", round(100*pcoa$eig[2:2], digits=1), "%  ]")); p
+pdf("R_output/UniFracs/FSC:AWC~NWC_unwGUniFrac.pdf"); print(p); dev.off()
+ 
+pcoa <- cmdscale(d5, k = nrow(transp) - 1, eig = TRUE, add = TRUE)
+p<-plot_ordination(myphy, pcoa, color="Water.Mass", title="Mid-Weighted Unifrac", shape="Season") + geom_point(size=5)+ theme_bw() + xlab(paste("Axis.1 [ ", round(100*pcoa$eig[1:1], digits=1), "%  ]")) +
+  ylab(paste("Axis.2 [ ", round(100*pcoa$eig[2:2], digits=1), "%  ]")); p
+pdf("R_output/UniFracs/FSC:AWC~NWC_midwGUniFrac.pdf"); print(p); dev.off()
+
+#Permanova - Distance based multivariate analysis of variance
+adonis(as.dist(d1) ~ as.matrix(sample_data(myphy)[,"Water.Core"]))
+ 
+#Each distance measure is most powerful in detecting only a certain scenario. When multiple distance
+#matrices are available, separate tests using each distance matrix will lead to loss of power due to
+#multiple testing correction. Combing the distance matrices in a single test will improve power.
+#PermanovaG combines multiple distance matrices by taking the maximum of pseudo-F statistics
+#for each distance matrix. Significance is assessed by permutation.
+ova=PermanovaG(unifracs[, , c("d_1", "d_0", "d_0.5")]  ~ as.matrix(sample_data(myphy)[,"Water.Core"])); ova
+capture.output(ova, file="R_output/UniFracs/FSC_gPERMANOVA~Water.Core.txt")
+
+ova=PermanovaG(unifracs[, , c("d_1", "d_0", "d_0.5")]  ~ as.matrix(sample_data(myphy)[,"Season"])); ova
+capture.output(ova, file="R_output/UniFracs/FSC_gPERMANOVA~Seasons.txt")
+
+ova=PermanovaG(unifracs[, , c("d_1", "d_0", "d_0.5")]  ~ as.matrix(sample_data(myphy)[,"Year"])); ova
+capture.output(ova, file="R_output/UniFracs/FSC_gPERMANOVA~Year.txt")
+
+```
+
+
+-------------------- umer code -----------------------------
+
+```{r umer code for core metagenome}
+#ACHTUNG: From the RStudio menu, click on "Session" and then "Set Working Directory" to "To Source File Location"
+#Script for core analysis
+#Reference: https://microbiome.github.io/tutorials/Core.html
+#v2.0 fixed reordering bug
+
+#rm(list=ls())
+
+library(phyloseq)
+library(ggplot2)
+library(viridis)
+#BiocManager::install("microbiome")
+library(microbiome)
+library(RColorBrewer)
+library(cowplot)
+
+
+#PARAMETERS ###########################
+#physeq<-import_biom("../../Data/feature_w_tax.biom")
+#meta_table<-read.csv("../../Data/meta_data.csv",header=T,row.names=1)
+which_level<-"class" #Phylum Class Order Family Genus Otus
+width_image_heatmap=12
+height_image_heatmap=8
+legend_text_size=6
+legend_title_size=10
+what_detection="absolute" #absolute relative
+minimum_prevalence=0.85
+text_size=10
+#/PARAMETERS ###########################
+physeq=ssu_phy
+abund_table<-t(ssu$counts)
+dim(abund_table)
+
+OTU_taxonomy<-as.data.frame(ssu$tax)
+OTU_taxonomy
+meta_table=sample_data(ssu_phy)
+
+dim(abund_table)
+dim(meta_table)
+dim(OTU_taxonomy)
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+#Remove singletons and adjust OTU_taxonomy
+#abund_table<-abund_table[,colSums(abund_table)>1]
+#OTU_taxonomy<-OTU_taxonomy[colnames(abund_table),]
+
+#extract subset of abund_table for which samples also exists in meta_table
+  #abund_table<-abund_table[rownames(abund_table) %in% rownames(meta_table),]
+#when reducing the abund_table, there is a high likelihood that an OTU was only present in a sample that is removed, so we shrink
+#the abund_table to get rid of empty columns
+  #abund_table<-abund_table[,colSums(abund_table)>0]
+#make your meta_table smaller by only considering samples that appear in abund_table
+  #meta_table<-meta_table[rownames(abund_table),]
+#make OTU_taxonomy smaller by only considering OTUs that appear in abund_table
+  #OTU_taxonomy<-OTU_taxonomy[colnames(abund_table),]
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+#/DATA IMPORT############################################################
+
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+#In the hypothesis space, all you need is to select the rows in meta_table you are interested in
+#and then allocate a column to meta_table$Groups that you want to use
+
+label="PlasticType"
+meta_table<-meta_table[meta_table$TimeOfExposure %in% c("PE", "PP", "PET"),]
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+
+#Adjust abund_table to contain only those rows that got selected in the Hypothesis space
+abund_table<-abund_table[rownames(meta_table),]
+#After adjustment, get rid of OTUs that are all empty
+abund_table<-abund_table[,colSums(abund_table)>0]
+#Adjust OTU taxonomy
+OTU_taxonomy<-OTU_taxonomy[colnames(abund_table),]
+
+#COLLATE OTUS AT A PARTICULAR LEVEL#######################################
+new_abund_table<-NULL
+if(which_level=="species"){
+  new_abund_table<-abund_table
+} else {
+  list<-unique(OTU_taxonomy[,which_level])
+  new_abund_table<-NULL
+  for(i in list){
+    tmp<-data.frame(rowSums(abund_table[,rownames(OTU_taxonomy)[OTU_taxonomy[,which_level]==i],drop=FALSE]))
+    #if(i=="NA"){colnames(tmp)<-c("NA")} else {
+      #colnames(tmp)<-paste("",i,sep="")
+     # colnames(tmp)<-gsub(";+$","",paste(sapply(OTU_taxonomy[OTU_taxonomy[,which_level]==i,][1,1:which(colnames(OTU_taxonomy)==which_level)],as.character),collapse=";"))
+    #}
+    if(is.null(new_abund_table)){new_abund_table<-tmp} else {new_abund_table<-cbind(tmp,new_abund_table)}
+  }
+}
+
+new_abund_table<-as.data.frame(as(new_abund_table,"matrix"))
+abund_table<-new_abund_table
+#/COLLATE OTUS AT A PARTICULAR LEVEL#######################################
+
+
+
+
+#Convert the data to phyloseq format
+OTU = otu_table(as.matrix(abund_table), taxa_are_rows = FALSE)
+TAX = tax_table(as.matrix(OTU_taxonomy))
+SAM = sample_data(meta_table)
+
+physeq<-NULL
+if(which_level=="species"){
+  physeq<-merge_phyloseq(phyloseq(OTU, TAX),SAM)
+} else {
+  physeq<-merge_phyloseq(phyloseq(OTU),SAM)
+}
+
+# keep only taxa with positive sums
+pseq.2 <- prune_taxa(taxa_sums(physeq) > 0, physeq)
+
+# Calculate compositional version of the data
+# (relative abundances)
+pseq.rel <- microbiome::transform(pseq.2, "compositional")
+
+prevalences <- seq(.05, 1, .05)
+detections<-NULL
+pseq_to_plot<-NULL
+if(what_detection=="relative"){
+  #Detection with Relative Abundances
+  detections <- 10^seq(log10(1e-3), log10(.2), length = 20)
+  pseq_to_plot<-pseq.rel
+  
+} else if(what_detection=="absolute"){
+  #Detection with Absolute Count
+  detections <- 10^seq(log10(1), log10(max(abundances(pseq.2))/10), length = 20)
+  pseq_to_plot<-pseq.2
+}
+
+
+
+datacore <- plot_core(pseq_to_plot, plot.type = "heatmap", 
+                         prevalences = prevalences,
+                         detections = detections,
+                         #colours = gray(seq(1,0,length=20)),
+                         colours=rev(brewer.pal(5, "Spectral")),
+                          min.prevalence = minimum_prevalence, horizontal = TRUE)
+
+if(which_level=="species"){
+  # get the data used for plotting 
+  df <- datacore$data 
+
+
+  # get the list of OTUs
+  list <- df$Taxa 
+
+  # get the taxonomy data
+  tax <- tax_table(pseq.2)
+  tax <- as.data.frame(tax)
+
+  # add the OTus to last column
+  tax$OTU <- rownames(tax)#OTU
+
+  # select taxonomy of only 
+  # those OTUs that are used in the plot
+  tax2 <- dplyr::filter(tax, rownames(tax) %in% list) 
+
+  # We will merege all the column into one ##c="OTU"
+  tax.unit <- tidyr::unite(tax2, Taxa_level,c("OTU",names(tax2)[-length(names(tax2))]), sep = "_;", remove = FALSE)
+  tax.unit$Taxa_level <- gsub(pattern="_;",replacement=";", tax.unit$Taxa_level)
+  tax.unit$Taxa_level <- gsub(pattern=";+$",replacement="", tax.unit$Taxa_level)
+  # add this new information into the plot data df
+  df$Taxa <- tax.unit$Taxa_level
+
+  #Refactorize df$Taxa with respect to list
+  df$Taxa<-factor(df$Taxa,levels=as.character(sapply(levels(list),function(x){unique(df$Taxa)[grep(paste(x,";",sep=""),unique(df$Taxa))]})))
+
+
+  # replace the data in the plot object
+  datacore$data <- df
+} else {
+  datacore$data<-datacore$data[datacore$data$Taxa!="NA",]}
+
+#Now plot it
+pdf(paste("Core_Heatmap1_",label,"_",which_level,"_",what_detection,".pdf",sep=""),width=width_image_heatmap,height=height_image_heatmap)
+p<-datacore 
+p<-p+theme_bw()  + theme_cowplot(font_size = text_size) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                                                                panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x  = element_text(angle=90,vjust=0.5,hjust = 1),legend.title=element_text(size=legend_title_size),
+        legend.text=element_text(size=legend_text_size))
+
+
+
+if(what_detection=="relative"){
+  p<-p + xlab("Relative Abundance (%)") 
+}  
+print(p)
+dev.off()
+```
+
+niche vs neutral assembly = lasts forever, doenst do much. takes a few
+hours
+
+```{r beta-null analysis distinguish niche vs neutral assembly processes}
+#ACHTUNG: From the RStudio menu, click on "Session" and then "Set Working Directory" to "To Source File Location"
+#Script for calculation of beta null models (Bray-Curtis distance and Weighted UniFrac)
+#Author: Umer
+
+library(phyloseq)
+library(picante)
+library(GUniFrac)
+library(vegan)
+library(ggplot2)
+library(ape)
+
+#DATA IMPORT############################################################
+abund_table<-t(ssu$counts); dim(abund_table)
+OTU_taxonomy<-as.data.frame(ssu$tax); OTU_taxonomy[1:10, 1:8]
+meta_table=sample_data(ssu_phy)
+#Load the tree using ape package
+OTU_tree <- ape::read.tree("processed/tree/sequences_flt.tre")
+#/DATA IMPORT############################################################
+
+#PARAMETERS ###########################
+rand <- 99 #randomization, ideally 999
+#/PARAMETERS ###########################
+
+
+# CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+#In the hypothesis space, all you need is to select the rows in meta_table you are interested in
+#and then allocate a column to meta_table$Groups that you want to use, meta_table$Connections to connect them
+#additionally if you provide a second meta_table$Subconnections, it will connect the group averages
+#You can use meta_table$Type to assign shape and PERMANOVA_variables to give variables
+
+label="PlasticTypeI"
+meta_table<-meta_table[meta_table$PlasticTypeI %in% c("PP","PE", "PET"),]
+#First provide grouping column
+meta_table$Groups<-as.character(meta_table$PlasticTypeI)
+#The colours in the the next instruction match the factors for meta_table$Groups
+meta_table$Groups<-factor(meta_table$Groups,c("PP","PE", "PET"))
+#\PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+
+physeq<-merge_phyloseq(ssu_phy, OTU_tree)
+phy_tree(physeq)
+sample_data(physeq)=sample_data(meta_table); sample_data(physeq)
+otu_table(physeq)=t(otu_table(physeq))
+
+
+#Get listing of all categorical data in total_categories
+total_categories<-levels(sample_data(meta_table)$Groups)
+
+#Reference:https://github.com/ShadeLab/PAPER_LeeSorensen_ISMEJ_2017/blob/master/R_analysis/Centralia2014_AmpliconWorkflow.R
+
+df<-NULL
+
+for(c in total_categories){
+  sample_IDs<-rownames(sample_data(meta_table)[sample_data(meta_table)$Groups==c,])
+  comm.t<-otu_table(physeq)[sample_IDs,]
+  #Get rid of empty columns
+  comm.t<-comm.t[,colSums(comm.t)>0]
+  m=match.phylo.data(phy_tree(physeq), t(comm.t)) #Extract subtree for each group
+  tree=m$phy
+  
+  ### Prepare and calculate abundance beta-null deviation metric
+  ## Adjusted from Stegen et al 2012 GEB
+  bbs.sp.site <- comm.t
+  patches=nrow(bbs.sp.site)
+  
+  
+  #note - two randomization runs in < 8 min on my laptop 
+  null.alphas <- matrix(NA, ncol(comm.t), rand)
+  null.alpha <- matrix(NA, ncol(comm.t), rand)
+  expected_beta <- matrix(NA, 1, rand)
+  null.gamma <- matrix(NA, 1, rand)
+  null.alpha.comp <- numeric()
+  bucket_bray_res <- matrix(NA, patches, rand)
+  bucket_wuf_res <- matrix(NA, patches, rand) #als add
+  
+  bbs.sp.site = ceiling(bbs.sp.site/max(bbs.sp.site)) 
+  mean.alpha = sum(bbs.sp.site)/nrow(bbs.sp.site) #mean.alpha
+  gamma <- ncol(bbs.sp.site) #gamma
+  obs_beta <- 1-mean.alpha/gamma
+  obs_beta_all <- 1-rowSums(bbs.sp.site)/gamma
+  
+  ##Generate null patches
+  for (randomize in 1:rand) {  
+    null.dist = comm.t
+    for (species in 1:ncol(null.dist)) {
+      tot.abund = sum(null.dist[,species])
+      null.dist[,species] = 0
+      for (individual in 1:tot.abund) {
+        sampled.site = sample(c(1:nrow(bbs.sp.site)), 1)
+        null.dist[sampled.site, species] = null.dist[sampled.site, species] + 1
+      }
+    }
+    
+    ##Calculate null deviation for null patches and store
+    null.alphas[,randomize] <- apply(null.dist, 2, function(x){sum(ifelse(x > 0, 1, 0))})
+    null.gamma[1, randomize] <- sum(ifelse(rowSums(null.dist)>0, 1, 0))
+    expected_beta[1, randomize] <- 1 - mean(null.alphas[,randomize]/null.gamma[,randomize])
+    null.alpha <- mean(null.alphas[,randomize])
+    null.alpha.comp <- c(null.alpha.comp, null.alpha)
+    
+    bucket_bray <- as.matrix(vegdist(null.dist, "bray"))
+    wuf<-(GUniFrac(null.dist, tree, alpha=1)) #als add
+    #wuf<-(GUniFrac(comm.t, tree, alpha=1)) #als add test that comparable  values are calculated as with QIIME
+    bucket_wuf <- as.matrix(wuf$unifracs[,,"d_1"]) #als add
+    diag(bucket_bray) <- NA
+    diag(bucket_wuf) <- NA #als add
+    bucket_bray_res[,randomize] <- apply(bucket_bray, 2, FUN="mean", na.rm=TRUE)
+    bucket_wuf_res[,randomize] <- apply(bucket_wuf, 2, FUN="mean", na.rm=TRUE) #als add
+  } ## end randomize loop
+  
+  ## Calculate beta-diversity for obs metacommunity
+  beta_comm_abund <- vegdist(comm.t, "bray")
+  wuf_comm_abund <- GUniFrac(comm.t, tree, alpha=1) #als add
+  res_beta_comm_abund <- as.matrix(as.dist(beta_comm_abund))
+  res_wuf_comm_abund <- as.matrix(as.dist(wuf_comm_abund$unifracs[,,"d_1"])) #als add
+  diag(res_beta_comm_abund) <- NA
+  diag(res_wuf_comm_abund) <- NA #als add
+  
+  # processed beta diversity (Bray)
+  beta_div_abund_stoch <- apply(res_beta_comm_abund, 2, FUN="mean", na.rm=TRUE)
+  wuf_div_abund_stoch <- apply(res_wuf_comm_abund, 2, FUN="mean", na.rm=TRUE) #als add
+  
+  # processed abundance beta-null deviation
+  bray_abund_null_dev <- beta_div_abund_stoch - mean(bucket_bray_res)
+  wuf_abund_null_dev <- wuf_div_abund_stoch - mean(bucket_wuf_res) #als add
+  
+  tmp<-data.frame(beta_div_abund_stoch,bray_abund_null_dev,wuf_div_abund_stoch,wuf_abund_null_dev)
+  tmp$Groups=c
+  if(is.null(df)){df<-tmp}else{df<-rbind(df,tmp)}
+}
+
+write.csv(df,file=paste("processed/null_n_lottery/BetaNULL_",label,"_",as.character(rand),".csv",sep=""))
+
+```
+
+NULL MODELING!!!!! Incidence-based beta community structure (Beta-RC)
+null modeling, Raup-Crick Beta diversity and elements of meta community
+distinguishes deterministic vs stochastic assembly
+
+```{r Beta-RC raup-crick beta diversity}
+#distinguishes deterministic vs stochastic commuit assemblly processes
+#ACHTUNG: From the RStudio menu, click on "Session" and then "Set Working Directory" to "To Source File Location"
+#Script for null modelling (beta NTI, Raup-Crick Beta-Diversity, and Elements of Metacommunity)
+#Reference: http://uu.diva-portal.org/smash/get/diva2:1373632/DATASET09.txt
+#v1.0 (All metrics are now being saved)
+#v1.1 (Found a serious bug as Raup-Crick Beta-Diversity can be used in both incidence and Bray-Curtis model)
+
+library(phyloseq)
+library(vegan)
+library(ape)
+library(picante)
+library(ecodist)
+library(metacom)
+
+#PARAMETERS ###########################
+abund_table<-t(ssu$counts)
+OTU_taxonomy<-as.data.frame(ssu$tax)
+meta_table=sample_data(ssu_phy)
+dim(abund_table)
+dim(meta_table)
+dim(OTU_taxonomy)
+
+#Use the phyloseq format of the data
+#OTU = otu_table(as.matrix(abund_table), taxa_are_rows = FALSE)
+#TAX = tax_table(as.matrix(OTU_taxonomy))
+#SAM = sample_data(meta_table)
+#physeq<-merge_phyloseq(phyloseq(OTU, TAX),SAM,OTU_tree)
+
+physeq <- ssu_phy
+otu_table(physeq)=t(otu_table(physeq))
+
+#Pruning and subsampling
+colSums(abund_table)
+physeq<-prune_taxa(taxa_sums(physeq)>10, physeq)
+rowSums(otu_table(physeq))
+
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+#/PARAMETERS #########################
+
+#HYPOTHESIS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+label="PlasticTypeI"
+meta_table<-meta_table[meta_table$PlasticTypeI %in% c("PP", "PE", "PET"),]
+#The colours in the the next instruction match the factors for meta_table$Groups
+meta_table$Groups<-factor(meta_table$PlasticTypeI)
+meta_table$Groups
+sample_data(physeq)=sample_data(meta_table)
+#\HYPOTHESIS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+
+
+#Rarefy to minimum sample size
+physeq_rel = rarefy_even_depth(physeq, sample.size = min(sample_sums(physeq)))
+
+
+#incidence_based Raup_Crick: https://github.com/jfq3/QsNullModels/blob/master/R/raup_crick.R
+raup_crick=function(spXsite, plot_names_in_col1=FALSE, classic_metric=FALSE, 
+                    split_ties=TRUE, reps=999, set_all_species_equal=FALSE, 
+                    as.distance.matrix=TRUE, report_similarity=FALSE){
+  
+  # expects a species by site matrix for spXsite, with row names for plots, 
+  # or optionally plots named in column 1.  By default calculates a modification 
+  # of the Raup-Crick metric (standardizing the metric to range from -1 to 1 
+  # instead of 0 to 1). Specifying classic_metric=TRUE instead calculates the 
+  # original Raup-Crick metric that ranges from 0 to 1. The option split_ties 
+  # (defaults to TRUE) adds half of the number of null observations that are 
+  # equal to the observed number of shared species to the calculation- this 
+  # is highly recommended.  The argument report_similarity defaults to FALSE 
+  # so the function reports a dissimilarity (which is appropriate as a measure 
+  # of beta diversity).  Setting report_similarity=TRUE returns a measure of 
+  # similarity, as Raup and Crick originally specified.  If ties are split 
+  # (as we recommend) the dissimilarity (default) and similarity (set 
+  # report_similarity=TRUE) calculations can be flipped by multiplying by -1 
+  # (for our modification, which ranges from -1 to 1) or by subtracting the 
+  # metric from 1 (for the classic metric which ranges from 0 to 1). If ties 
+  # are not split (and there are ties between the observed and expected shared 
+  # number of species) this conversion will not work. The argument reps specifies
+  # the number of randomizations (a minimum of 999 is recommended- default was 
+  # 9999).  set_all_species_equal weights all species equally in the null model 
+  # instead of weighting species by frequency of occupancy.  
+  
+  # Note that the choice of how many plots (rows) to include has a real impact 
+  # on the metric, as species and their occurrence frequencies across the set 
+  # of plots is used to determine gamma and the frequency with which each 
+  # species is drawn from the null model	
+  
+  # this section moves plot names in column 1 (if specified as being present) 
+  # into the row names of the matrix and drops the column of names
+  if(plot_names_in_col1){
+    row.names(spXsite)<-spXsite[,1]
+    spXsite<-spXsite[,-1]
+  }
+  
+  # count number of sites and total species richness across all plots (gamma)
+  n_sites<-nrow(spXsite)
+  gamma<-ncol(spXsite)
+  
+  # make the spXsite matrix into a pres/abs. (overwrites initial spXsite matrix):
+  ceiling(spXsite/max(spXsite))->spXsite
+  
+  # create an occurrence vector- used to give more weight to widely distributed 
+  # species in the null model:
+  occur<-apply(spXsite, MARGIN=2, FUN=sum)
+  
+  # NOT recommended- this is a non-trivial change to the metric:
+  # sets all species to occur with equal frequency in the null model
+  # e.g.- discards any occupancy frequency information
+  if(set_all_species_equal){
+    occur<-rep(1,gamma)
+  }
+  
+  # determine how many unique species richness values are in the dataset
+  # this is used to limit the number of null communities that have to be 
+  # calculated
+  alpha_levels<-sort(unique(apply(spXsite, MARGIN=1, FUN=sum)))
+  
+  # make_null:
+  
+  # alpha_table is used as a lookup to help identify which null distribution
+  # to use for the tests later.  It contains one row for each combination of 
+  # alpha richness levels. 
+  
+  alpha_table<-data.frame(c(NA), c(NA))
+  names(alpha_table)<-c("smaller_alpha", "bigger_alpha")
+  col_count<-1
+  
+  # null_array will hold the actual null distribution values.  Each element
+  # of the array corresponds to a null distribution for each combination of 
+  # alpha values.  The alpha_table is used to point to the correct null 
+  # distribution- the row numbers of alpha_table correspond to the [[x]] 
+  # indices of the null_array.  Later the function will find the row of 
+  # alpha_table with the right combination of alpha values.  That row number 
+  # is used to identify the element of null_array that contains the correct 
+  # null distribution for that combination of alpha levels. 
+  
+  null_array<-list()
+  
+  # looping over each combination of alpha levels:
+  
+  for(a1 in 1:length(alpha_levels)){
+    for(a2 in a1:length(alpha_levels)){
+      
+      # build a null distribution of the number of shared species for a 
+      # pair of alpha values:
+      null_shared_spp<-NULL
+      for(i in 1:reps){
+        
+        # two empty null communities of size gamma:
+        com1<-rep(0,gamma)
+        com2<-rep(0,gamma)
+        
+        # add alpha1 number of species to com1, weighting by species occurrence frequencies:
+        com1[sample(1:gamma, alpha_levels[a1], replace=FALSE, prob=occur)]<-1
+        
+        # same for com2:
+        com2[sample(1:gamma, alpha_levels[a2], replace=FALSE, prob=occur)]<-1
+        
+        # how many species are shared in common?
+        null_shared_spp[i]<-sum((com1+com2)>1)
+        
+      }
+      
+      # store null distribution, record values for alpha 1 and 2 in the alpha_table to 
+      # help find the correct null distribution later:
+      null_array[[col_count]]<-null_shared_spp
+      
+      alpha_table[col_count, which(names(alpha_table)=="smaller_alpha")]<-alpha_levels[a1]
+      alpha_table[col_count, which(names(alpha_table)=="bigger_alpha")]<-alpha_levels[a2]
+      
+      # increment the counter for the columns of the alpha table/ elements of the null array
+      col_count<-col_count+1	
+      
+    }
+    
+  }
+  
+  # create a new column with both alpha levels to match on:
+  alpha_table$matching<-paste(alpha_table[,1], alpha_table[,2], sep="_")
+  
+  #####################
+  # do the test:
+  
+  # build a site by site matrix for the results, with the names of the sites in the row and col names:
+  results<-matrix(data=NA, nrow=n_sites, ncol=n_sites, dimnames=list(row.names(spXsite), row.names(spXsite)))
+  
+  # for each pair of sites (duplicates effort now to make a full matrix instead 
+  # of a half one- but this part should be minimal time as compared to the null 
+  # model building)
+  for(i in 1:n_sites){
+    for(j in 1:n_sites){
+      
+      # how many species are shared between the two sites:
+      n_shared_obs<-sum((spXsite[i,]+spXsite[j,])>1)
+      
+      # what was the observed richness of each site?
+      obs_a1<-sum(spXsite[i,])
+      obs_a2<-sum(spXsite[j,])
+      
+      # place these alphas into an object to match against alpha_table (sort so 
+      # smaller alpha is first)
+      obs_a_pair<-sort(c(obs_a1, obs_a2))
+      
+      # match against the alpha table- row index identifies which element of the 
+      # null array contains the correct null distribution for the observed 
+      # combination of alpha values:
+      null_index<-which(alpha_table$matching==paste(obs_a_pair[1], obs_a_pair[2], sep="_"))
+      
+      # how many null observations is the observed value tied with?
+      num_exact_matching_in_null<-sum(null_array[[null_index]]==n_shared_obs)
+      
+      # how many null values are bigger than the observed value?
+      num_greater_in_null<-sum(null_array[[null_index]]>n_shared_obs)
+      
+      rc<-(num_greater_in_null)/reps
+      
+      if(split_ties){
+        
+        rc<-((num_greater_in_null+(num_exact_matching_in_null)/2)/reps)
+      }
+      
+      if(!classic_metric){
+        
+        # our modification of raup crick standardizes the metric to range 
+        # from -1 to 1 instead of 0 to 1
+        
+        rc<-(rc-.5)*2
+      }
+      
+      #  at this point rc represents an index of dissimilarity- multiply by -1 
+      # to convert to a similarity as specified in the original 1979 Raup Crick paper
+      if(report_similarity & !classic_metric){
+        rc<- rc*-1
+      }
+      
+      # the switch to similarity is done differently if the original 0 to 1 range 
+      # of the metric is used:
+      if(report_similarity & classic_metric){
+        rc<- 1-rc
+      }
+      
+      # store the metric in the results matrix:
+      results[i,j]<-round(rc, digits=2)
+      
+    }
+  }
+  
+  if(as.distance.matrix){
+    results<-as.dist(results)
+  }	
+  
+  return(results)
+  
+}
+
+
+
+
+
+# Second step of the QPE approach (abundance-based Raup-Crick beta-diversity)
+raup_crick_abundance = function(spXsite, plot_names_in_col1=TRUE, classic_metric=FALSE, split_ties=TRUE, reps=999, set_all_species_equal=FALSE, as.distance.matrix=TRUE, report_similarity=FALSE){
+  
+  ##expects a species by site matrix for spXsite, with row names for plots, or optionally plots named in column 1.  By default calculates a modification of the Raup-Crick metric (standardizing the metric to range from -1 to 1 instead of 0 to 1). Specifying classic_metric=TRUE instead calculates the original Raup-Crick metric that ranges from 0 to 1. The option split_ties (defaults to TRUE) adds half of the number of null observations that are equal to the observed number of shared species to the calculation- this is highly recommended.  The argument report_similarity defaults to FALSE so the function reports a dissimilarity (which is appropriate as a measure of beta diversity).  Setting report_similarity=TRUE returns a measure of similarity, as Raup and Crick originally specified.  If ties are split (as we recommend) the dissimilarity (default) and similarity (set report_similarity=TRUE) calculations can be flipped by multiplying by -1 (for our modification, which ranges from -1 to 1) or by subtracting the metric from 1 (for the classic metric which ranges from 0 to 1). If ties are not split (and there are ties between the observed and expected shared number of species) this conversion will not work. The argument reps specifies the number of randomizations (a minimum of 999 is recommended- default is 9999).  set_all_species_equal weights all species equally in the null model instead of weighting species by frequency of occupancy.
+  
+  
+  ##Note that the choice of how many plots (rows) to include has a real impact on the metric, as species and their occurrence frequencies across the set of plots is used to determine gamma and the frequency with which each species is drawn from the null model
+  
+  
+  ##this section moves plot names in column 1 (if specified as being present) into the row names of the matrix and drops the column of names
+  if(plot_names_in_col1){
+    row.names(spXsite)<-spXsite[,1]
+    spXsite<-spXsite[,-1]
+  }
+  
+  
+  ## count number of sites and total species richness across all plots (gamma)
+  n_sites<-nrow(spXsite)
+  gamma<-ncol(spXsite)
+  
+  ##build a site by site matrix for the results, with the names of the sites in the row and col names:
+  results<-matrix(data=NA, nrow=n_sites, ncol=n_sites, dimnames=list(row.names(spXsite), row.names(spXsite)))
+  
+  ##make the spXsite matrix into a new, pres/abs. matrix:
+  ceiling(spXsite/max(spXsite))->spXsite.inc
+  
+  ##create an occurrence vector- used to give more weight to widely distributed species in the null model:
+  occur<-apply(spXsite.inc, MARGIN=2, FUN=sum)
+  
+  ##create an abundance vector- used to give more weight to abundant species in the second step of the null model:
+  abundance<-apply(spXsite, MARGIN=2, FUN=sum)
+  
+  ##make_null:
+  
+  ##looping over each pairwise community combination:
+  
+  for(null.one in 1:(nrow(spXsite)-1)){
+    for(null.two in (null.one+1):nrow(spXsite)){
+      
+      null_bray_curtis<-NULL
+      for(i in 1:reps){
+        
+        ##two empty null communities of size gamma:
+        com1<-rep(0,gamma)
+        com2<-rep(0,gamma)
+        
+        ##add observed number of species to com1, weighting by species occurrence frequencies:
+        com1[sample(1:gamma, sum(spXsite.inc[null.one,]), replace=FALSE, prob=occur)]<-1
+        com1.samp.sp = sample(which(com1>0),(sum(spXsite[null.one,])-sum(com1)),replace=TRUE,prob=abundance[which(com1>0)]);
+        com1.samp.sp = cbind(com1.samp.sp,1); # head(com1.samp.sp);
+        com1.sp.counts = as.data.frame(tapply(com1.samp.sp[,2],com1.samp.sp[,1],FUN=sum)); colnames(com1.sp.counts) = 'counts'; # head(com1.sp.counts);
+        com1.sp.counts$sp = as.numeric(rownames(com1.sp.counts)); # head(com1.sp.counts);
+        com1[com1.sp.counts$sp] = com1[com1.sp.counts$sp] + com1.sp.counts$counts; # com1;
+        #sum(com1) - sum(spXsite[null.one,]); ## this should be zero if everything work properly
+        rm('com1.samp.sp','com1.sp.counts');
+        
+        ##same for com2:
+        com2[sample(1:gamma, sum(spXsite.inc[null.two,]), replace=FALSE, prob=occur)]<-1
+        com2.samp.sp = sample(which(com2>0),(sum(spXsite[null.two,])-sum(com2)),replace=TRUE,prob=abundance[which(com2>0)]);
+        com2.samp.sp = cbind(com2.samp.sp,1); # head(com2.samp.sp);
+        com2.sp.counts = as.data.frame(tapply(com2.samp.sp[,2],com2.samp.sp[,1],FUN=sum)); colnames(com2.sp.counts) = 'counts'; # head(com2.sp.counts);
+        com2.sp.counts$sp = as.numeric(rownames(com2.sp.counts)); # head(com2.sp.counts);
+        com2[com2.sp.counts$sp] = com2[com2.sp.counts$sp] + com2.sp.counts$counts; # com2;
+        # sum(com2) - sum(spXsite[null.two,]); ## this should be zero if everything work properly
+        rm('com2.samp.sp','com2.sp.counts');
+        
+        null.spXsite = rbind(com1,com2); # null.spXsite;
+        
+        ##calculate null bray curtis
+        null_bray_curtis[i] = ecodist::distance(null.spXsite,method='bray-curtis');
+        
+      }; # end reps loop
+      
+      ## empirically observed bray curtis
+      obs.bray = ecodist::distance(spXsite[c(null.one,null.two),],method='bray-curtis');
+      
+      ##how many null observations is the observed value tied with?
+      num_exact_matching_in_null = sum(null_bray_curtis==obs.bray);
+      
+      ##how many null values are smaller than the observed *dissimilarity*?
+      num_less_than_in_null = sum(null_bray_curtis<obs.bray);
+      
+      rc = (num_less_than_in_null )/reps; # rc;
+      
+      if(split_ties){
+        
+        rc = ((num_less_than_in_null +(num_exact_matching_in_null)/2)/reps)
+      };
+      
+      
+      if(!classic_metric){
+        
+        ##our modification of raup crick standardizes the metric to range from -1 to 1 instead of 0 to 1
+        
+        rc = (rc-.5)*2
+      };
+      
+      results[null.two,null.one] = round(rc,digits=2); ##store the metric in the results matrix
+      
+      print(c(null.one,null.two,date()));
+      
+    }; ## end null.two loop
+    
+  }; ## end null.one loop
+  
+  if(as.distance.matrix){ ## return as distance matrix if so desired
+    results<-as.dist(results)
+  }	
+  
+  return(results)
+  
+}; ## end function
+
+
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+  library(plyr)
+  
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)
+  }
+  
+  # This does the summary. For each group's data frame, return a vector with
+  # N, mean, and sd
+  datac <- ddply(data, groupvars, .drop=.drop,
+                 .fun = function(xx, col) {
+                   c(N    = length2(xx[[col]], na.rm=na.rm),
+                     mean = mean   (xx[[col]], na.rm=na.rm),
+                     sd   = sd     (xx[[col]], na.rm=na.rm)
+                   )
+                 },
+                 measurevar
+  )
+  
+  # Rename the "mean" column    
+  datac <- rename(datac, c("mean" = measurevar))
+  
+  datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+  
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval: 
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+  
+  return(datac)
+}
+
+
+abund_table_ems<-otu_table(physeq_rel)
+meta_table_ems<-sample_data(physeq_rel)
+
+collated_coherence<-NULL
+collated_turnover<-NULL
+collated_boundary<-NULL
+collated_sitescores<-NULL
+collated_pairwise_RC_abundance<-NULL
+collated_pairwise_RC_incidence<-NULL
+collated_pairwise_bNTI<-NULL
+
+for(i in 1:nlevels(meta_table_ems$Groups)){
+  abund_table_ems_group<-abund_table_ems[meta_table_ems$Groups==levels(meta_table_ems$Groups)[i],,drop=F]
+  abund_table_ems_group = abund_table_ems_group[,which(colSums(abund_table_ems_group) != 0)]
+  
+  #Now calculate Elements of Metacommunity
+  met_ems_group=Metacommunity( abund_table_ems_group, scores = 1, method = "r1", sims = 999, order = T, binary = F, verbose=T, allowEmpty=T)
+  om_ems_group=OrderMatrix(abund_table_ems_group, processedScores=T, binary=F)
+  
+  coherence<-t(data.frame(row.names=met_ems_group$Coherence[-nrow(met_ems_group$Coherence),1],stats=met_ems_group$Coherence[-nrow(met_ems_group$Coherence),2]))
+  rownames(coherence)<-levels(meta_table$Groups)[i]
+  
+  turnover<-t(data.frame(row.names=met_ems_group$Turnover[-nrow(met_ems_group$Turnover),1],stats=met_ems_group$Turnover[-nrow(met_ems_group$Turnover),2]))
+  rownames(turnover)<-levels(meta_table$Groups)[i]
+  
+  boundary<-t(data.frame(row.names=met_ems_group$Boundary[,1],stats=met_ems_group$Boundary[,2]))
+  rownames(boundary)<-levels(meta_table$Groups)[i]
+  
+  sitescores<-data.frame(om_ems_group$sitescores)
+  colnames(sitescores)<-c("sitescores")
+  sitescores$Groups<-levels(meta_table_ems$Groups)[i]
+  
+  #Now calculate Raup-Crick abundance based
+  results=raup_crick_abundance(abund_table_ems_group, set_all_species_equal = F, plot_names_in_col1 = F, reps=999)
+  pairwise_RC_abundance<-reshape2::melt(as.matrix(results))
+  pairwise_RC_abundance$Groups<-levels(meta_table_ems$Groups)[i]
+  
+  
+  #Now calculate Raup-Crick incidence based
+  results=raup_crick(abund_table_ems_group,plot_names_in_col1 = F, reps = 999, as.distance.matrix = T, set_all_species_equal = F)
+  pairwise_RC_incidence<-reshape2::melt(as.matrix(results))
+  pairwise_RC_incidence$Groups<-levels(meta_table_ems$Groups)[i]
+  
+  
+  #Now calculate betaMNTD
+  m=match.phylo.data(OTU_tree, t(abund_table_ems_group)) #Extract subtree for each group
+  OTU_tree_ems_group=m$phy
+  
+  abund_table_ems_group<-t(abund_table_ems_group)
+  
+  beta.mntd.weighted = as.matrix(comdistnt(t(abund_table_ems_group),cophenetic(OTU_tree_ems_group),abundance.weighted=T));
+  
+  
+  beta.reps = 999; 
+  rand.weighted.bMNTD.comp = array(c(-999),dim=c(ncol(abund_table_ems_group),ncol(abund_table_ems_group),beta.reps));
+  dim(rand.weighted.bMNTD.comp);
+  
+  for (rep in 1:beta.reps) {
+    
+    rand.weighted.bMNTD.comp[,,rep] = as.matrix(comdistnt(t(abund_table_ems_group),taxaShuffle(cophenetic(OTU_tree_ems_group)),abundance.weighted=T,exclude.conspecifics = F));
+    
+    print(c(date(),rep));
+    
+  }
+  
+  weighted.bNTI = matrix(c(NA),nrow=ncol(abund_table_ems_group),ncol=ncol(abund_table_ems_group));
+  dim(weighted.bNTI);
+  
+  for (columns in 1:(ncol(abund_table_ems_group)-1)) {
+    for (rows in (columns+1):ncol(abund_table_ems_group)) {
+      
+      rand.vals = rand.weighted.bMNTD.comp[rows,columns,];
+      weighted.bNTI[rows,columns] = (beta.mntd.weighted[rows,columns] - mean(rand.vals)) / sd(rand.vals);
+      rm("rand.vals");
+      
+    };
+  };
+  rownames(weighted.bNTI) = colnames(abund_table_ems_group);
+  colnames(weighted.bNTI) = colnames(abund_table_ems_group);
+  pairwise_bNTI<-reshape2::melt(as.matrix(weighted.bNTI))
+  pairwise_bNTI$Groups<-levels(meta_table_ems$Groups)[i]
+  
+  #Now collate all the statistics together
+  if(is.null(collated_coherence)){collated_coherence<-coherence} else {collated_coherence<-rbind(collated_coherence,coherence)}
+  if(is.null(collated_boundary)){collated_boundary<-boundary} else {collated_boundary<-rbind(collated_boundary,boundary)}
+  if(is.null(collated_turnover)){collated_turnover<-turnover} else {collated_turnover<-rbind(collated_turnover,turnover)}
+  if(is.null(collated_sitescores)){collated_sitescores<-sitescores} else {collated_sitescores<-rbind(collated_sitescores,sitescores)}
+  if(is.null(collated_pairwise_RC_abundance)){collated_pairwise_RC_abundance<-pairwise_RC_abundance} else {collated_pairwise_RC_abundance<-rbind(collated_pairwise_RC_abundance,pairwise_RC_abundance)}
+  if(is.null(collated_pairwise_RC_incidence)){collated_pairwise_RC_incidence<-pairwise_RC_incidence} else {collated_pairwise_RC_incidence<-rbind(collated_pairwise_RC_incidence,pairwise_RC_incidence)}
+  if(is.null(collated_pairwise_bNTI)){collated_pairwise_bNTI<-pairwise_bNTI} else {collated_pairwise_bNTI<-rbind(collated_pairwise_bNTI,pairwise_bNTI)}
+  
+  
+}
+
+collated_RC<-summarySE(collated_pairwise_RC_incidence, measurevar = "value", groupvars = "Groups")
+rownames(collated_RC)<-collated_RC[,1]
+collated_RC<-collated_RC[,-1]
+collated_bNTI<-summarySE(collated_pairwise_bNTI, measurevar = "value", groupvars = "Groups")
+rownames(collated_bNTI)<-collated_bNTI[,1]
+collated_bNTI<-collated_bNTI[,-1]
+
+write.csv(collated_coherence,file=paste("processed/null_n_lottery/null_model=Coherence_",label,".csv",sep=""))
+write.csv(collated_boundary,file=paste("processed/null_n_lottery/null_model=Boundary_",label,".csv",sep=""))
+write.csv(collated_turnover,file=paste("processed/null_n_lottery/null_model=Turnover_",label,".csv",sep=""))
+write.csv(collated_sitescores,file=paste("processed/null_n_lottery/null_model=Sitescores_",label,".csv",sep=""))
+write.csv(collated_pairwise_RC_abundance,file=paste("processed/null_n_lottery/null_model=PairwiseRC_",label,".csv",sep=""))
+write.csv(collated_pairwise_bNTI,file=paste("processed/null_n_lottery/null_model=PairwisebNTI_",label,".csv",sep=""))
+write.csv(collated_RC,file=paste("processed/null_n_lottery/null_model=RC_",label,".csv",sep=""))
+write.csv(collated_bNTI,file=paste("processed/null_n_lottery/null_model=bNTI_",label,".csv",sep=""))
+```
+
+visualization of the null model:
+
+```{r visualization of null model}
+#Script for visualisation of null modelling (beta NTI, Raup-Crick Beta-Diversity, and Elements of Metacommunity)
+#Reference: http://uu.diva-portal.org/smash/get/diva2:1373632/DATASET09.txt
+#Authors: Umer, Anna, and Simon
+#Versions: 1.1 (fixed ordering issue)
+
+library(ggplot2)
+
+#PARAMETERS ###########################
+label="PlasticTypeI"
+PairwisebNTI<- collated_pairwise_bNTI
+PairwiseRC <- collated_pairwise_RC_abundance
+RC <- collated_RC
+Coherence <- collated_coherence
+BoundaryClump <- collated_boundary
+Turnover <-collated_turnover
+ordering<-c("PP", "PE", "PET")
+colours <- c(  "#ff9999",   "#660000", "tomato");
+QPE_height=10
+QPE_width=5
+EMS_height=7
+EMS_width=5
+RC_height=7
+RC_width=5
+#/PARAMETERS ###########################
+
+
+QPE_table<-cbind(Var1=as.character(PairwiseRC$Var1), Var2=as.character(PairwiseRC$Var2),bNTI=PairwisebNTI[,"value",drop=F], RC=PairwiseRC[,"value",drop=F], Groups=PairwiseRC[,"Groups",drop=F])
+#Now we want to get rid of any rows that have NA there to get the comparisons from
+# N x N to N (N-1)/2. A way to do this to use complete.cases
+QPE_table<-QPE_table[complete.cases(QPE_table),]
+names(QPE_table)<-c("Var1","Var2","bNTI","RC","Groups")
+QPE_table$Groups=factor(QPE_table$Groups)
+
+QPE_df<-NULL
+
+for(i in levels(QPE_table$Groups)){
+  tmp<-QPE_table[QPE_table$Groups==i,]
+  sp_mask<-abs(tmp$bNTI)>2
+  hs_count<-sum(tmp$bNTI[sp_mask]<2)
+  vs_count<-sum(tmp$bNTI[sp_mask]>2)
+  sig_count<-sum(sp_mask)
+  total_count<-nrow(tmp)
+  nonsig_count<-nrow(tmp[!sp_mask,])
+  dl_count<-sum(tmp[!sp_mask,"RC"]>0.95)
+  hd_count<-sum(tmp[!sp_mask,"RC"]<(-0.95))
+  ed_count<-nonsig_count-dl_count-hd_count
+  tmp2<-data.frame(measure="Homogenizing Selection",value=(hs_count/total_count*100),Groups=i)
+  tmp2<-rbind(tmp2,data.frame(measure="Variable Selection",value=(vs_count/total_count*100),Groups=i))
+  tmp2<-rbind(tmp2,data.frame(measure="Dispersal Limitation",value=(dl_count/total_count*100),Groups=i))
+  tmp2<-rbind(tmp2,data.frame(measure="Ecological Drift",value=(ed_count/total_count*100),Groups=i))
+  tmp2<-rbind(tmp2,data.frame(measure="Homogenizing Dispersal",value=(hd_count/total_count*100),Groups=i))
+  if(is.null(QPE_df)){QPE_df<-tmp2} else {QPE_df<-rbind(QPE_df,tmp2)}
+}
+QPE_df
+
+#Change the orderign of the Groups
+QPE_df$Groups<-factor(as.character(QPE_df$Groups),levels=ordering)
+pdf(paste("processed/null_n_lottery/null_model=QPE_",label,".pdf",sep=""),width=QPE_width,height=QPE_height)
+p<-ggplot(QPE_df, aes(x=Groups, y=value, fill=Groups)) 
+p<-p+geom_bar(stat="identity")+theme_minimal()
+p<-p+geom_text(aes(label=sprintf("%0.2f", round(value, digits = 2))), vjust=-0.3, size=3.5)
+p<-p+facet_wrap(~measure, strip.position="left", ncol=1,scales="free_y")
+p<-p+scale_fill_manual(values=colours)
+p<-p+ylim(0,110)
+p<-p+ylab("% Assembly Processes")
+p<-p+theme(strip.background = element_rect(fill="white"))+theme(panel.spacing = unit(2, "lines"),
+                                                                axis.text.x = element_text(angle = 90, hjust = 1))
+print(p)
+dev.off()
+
+#another plot
+RC<-cbind(RC,Groups=rownames(RC))
+#Change the ordering of the Groups
+RC$Groups<-factor(as.character(RC$Groups),levels=ordering)
+pdf(paste("processed/null_n_lottery/null_model=RC_",label,".pdf",sep=""),width=RC_width,height=RC_height)
+p<-ggplot(RC,aes(Groups,value,colour=Groups))
+p<-p+geom_errorbar(aes(ymin=value-se, ymax=value+se), width=.1, lty=1)+
+  geom_point(size=5)
+
+p <- p + geom_hline(yintercept = 0,linetype="dotted")
+p <-p +geom_text(aes(x=1,y=0, label="0\n"), colour="blue",size=2) 
+
+p <- p + geom_hline(yintercept = 1,linetype="dotted")
+p <-p +geom_text(aes(x=1,y=1, label="+1\n"), colour="blue",size=2) 
+
+p <- p + geom_hline(yintercept = -1,linetype="dotted")
+p <-p +geom_text(aes(x=1,y=-1, label="\n-1"), colour="blue",size=2) 
+
+p<-p+theme_minimal()
+p<-p+scale_colour_manual(values=colours)
+p<-p+ylab("Incidence-based beta-diversity (±SE)")
+p<-p+theme(strip.background = element_rect(fill="white"))+theme(panel.spacing = unit(2, "lines"),
+                                                                axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p)
+dev.off()
+
+
+
+#2nd plot in 3rd place cuz there is a bug
+#We move on to EMS (Elements of Metacommunity Structure)
+collated_community_types<-NULL
+for(i in rownames(Coherence)){
+  community_type="Random"
+  if(Coherence[i,"p"]<0.05){
+    #Top left figure
+    if(Coherence[i,"z"]<(-1.96)){
+      community_type="Checkerboard"
+    } else if(Coherence[i,"z"]>1.96) {
+        #Top middle left  
+          if(Turnover[i,"z"]<(-1.96)){
+            if(BoundaryClump[i,"p"]<0.05){
+              if(BoundaryClump[i,"index"]<0){
+                community_type="Nested Hyperdispersed species loss"
+              } else {
+                community_type="Nested Clumped species loss"
+              }
+            }
+            else{
+              community_type="Nested Random species loss"
+            }
+          }
+          #Top middle right 
+           else if(Turnover[i,"z"]>1.96)
+            {
+              if(BoundaryClump[i,"p"]<0.05){
+                if(BoundaryClump[i,"index"]<0){
+                  community_type="Evenly spaced"
+                } else {
+                  community_type="Clementsian"
+                }
+              }
+              else{
+                community_type="Gleasonian"
+              }
+          }
+        if(Turnover[i,"p"]>0.05){
+          community_type=paste("Quasi-structure",community_type)
+        }
+      }
+    
+  }
+  #Collate all the information together
+  if(is.null(collated_community_types)){collated_community_types<-community_type} else {collated_community_types<-c(collated_community_types,community_type)}
+}
+
+
+EMS<-cbind(Coherence,Turnover,BoundaryClump,Metacommunity=collated_community_types)
+names(EMS)<-c("Coherence_Abs","Coherence_z","Coherence_p","Coherence_simMean","Coherence_simVariance",
+              "Turnover_turn","Turnover_z","Turnover_p","Turnover_simMean","Turnover_simVariance",
+              "Clumping_index","Clumping_p","Clumping_df","Metacommunity")
+write.csv(EMS,file=paste("processed/null_n_lottery/null_model=EMS_",label,".csv",sep=""))
+
+EMS
+EMS<-cbind(EMS,Groups=rownames(EMS))
+#EMS=as(EMS, "matrix")
+class(EMS)
+colnames(EMS)
+EMS$Groups
+
+#Change the ordering of the Groups
+EMS$Groups<-factor(as.character(EMS$Groups),levels=ordering)
+pdf(paste("processed/null_n_lottery/null_model=EMS_",label,".pdf",sep=""),width=EMS_width,height=EMS_height)
+p<-ggplot(EMS,aes(Groups,Coherence_z,color=Turnover_z,size=Clumping_index,shape=Metacommunity))
+p<-p+geom_point()
+p <- p + geom_hline(yintercept = 1.96,linetype="dotted")
+p <-p +geom_text(aes(x=1,y=1.96, label="1.96\n"), colour="blue",size=2) 
+  
+p <- p + geom_hline(yintercept = -1.96,linetype="dotted")
+p <-p +geom_text(aes(x=1,y=-1.96, label="\n-1.96"), colour="blue",size=2) 
+  
+p <- p + ylab("Coherence (z-value)")
+p <- p + scale_color_continuous("Turnover (z-value)")
+p <- p + scale_size_continuous("Boundary clumping (Morisita's index)")
+p<-p+theme(strip.background = element_rect(fill="white"))+theme(panel.spacing = unit(2, "lines"),
+                                                                axis.text.x = element_text(angle = 90, hjust = 1))
+
+p<-p+theme_minimal()
+print(p)
+dev.off()
+```
+
+------------------------------------------ crap code or unsuccessful
+code----------------------
+
+Null modeling: is a community deterministic or stochastic
+
+```{r deterministic or stochastic}
+#ACHTUNG: From the RStudio menu, click on "Session" and then "Set Working Directory" to "To Source File Location"
+#Script for null modelling (ST/NST/MST)
+#Authors: Umer, Anna
+#v1.0 (All metrics are now being saved)
+
+library(phyloseq)
+library(vegan)
+library(ape)
+library(NST)
+library(ggplot2)
+
+
+#DATA IMPORT############################################################
+abund_table<-t(ssu$counts)
+dim(abund_table)
+
+OTU_taxonomy<-as.data.frame(ssu$tax)
+OTU_taxonomy[1:8, 1:8]
+
+meta_table=sample_data(ssu_phy)
+row.names(meta_table)
+
+dim(abund_table); dim(meta_table); dim(OTU_taxonomy)
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+#/DATA IMPORT############################################################
+
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+#In the hypothesis space, all you need is to select the rows in meta_table you are interested in
+#and then allocate a column to meta_table$Groups that you want to use.
+
+label="TimeOfExposure"
+meta_table<-meta_table[meta_table$TimeOfExposure %in% c( "T0", "T1", "T3", "T8"),]  #all the groups should have the same number of temporal samples or its a problem for NST
+#without the PE plastic because its missing its mPE-T3 & mPE-T8 samples.
+#without the PET plastics because the are missing the T0 samplmes: no debris
+#The colours in the the next instruction match the factors for meta_table$Groups
+meta_table$Groups<-factor(meta_table$TimeOfExposure, c( "T0", "T1", "T3", "T8"))
+meta_table$Groups
+#extract subset of abund_table for which samples also exists in meta_table
+abund_table<-abund_table[rownames(abund_table) %in% rownames(meta_table),]
+row.names(abund_table)
+#when reducing the abund_table, there is a high likelihood that an OTU was only present in a sample that is removed, so we shrink
+#the abund_table to get rid of empty columns
+        #abund_table<-abund_table[,colSums(abund_table)>0]
+#make your meta_table smaller by only considering samples that appear in abund_table
+        #meta_table<-meta_table[rownames(abund_table),]
+#make OTU_taxonomy smaller by only considering OTUs that appear in abund_table
+        #  OTU_taxonomy<-OTU_taxonomy[colnames(abund_table),]
+#At this point we have abund_table, meta_table, and OTU_taxonomy are ready and their dimensions should match
+
+#select colors based on number of groups
+colours <- c( "#18A188", "#6F63BB", "tomato")
+
+#PARAMETERS CHANGE THE GROUPING COLUMN AS YOU DESIRE############################
+#Bug in tNST (abund_table should be of type "matrix")
+abund_table<-as(abund_table,"matrix")
+abund_table[1:nrow(abund_table), 1:4]
+
+#PARAMETERS #######################################################################################################################################
+distance_measure= "jaccard" #"manhattan" "mManhattan" "euclidean" "mEuclidean"  "canberra" "bray" "kulczynski" "jaccard" "gower" "altGower" "mGower" "morisita" "horn" "binomial" "chao" "cao"
+abundance.weighted= TRUE #Logic, consider abundances or not (just presence/absence). default is TRUE.
+#Jaccard with abundance.weighted=TRUE is called Ruzicka 
+null_model="PF" #"EE" "EP" "EF" "PE" "PP" "PF" "FE" "FP" "FF" with details given below:
+#Abbreviation|Ways_to_constrain_taxa_occurrence_frequency|Ways_to_constrain_richness_in_each_sample
+#============|===========================================|=========================================
+# EE           Equiprobable                                Equiprobable
+# EP           Equiprobable                                Proportional
+# EF           Equiprobable                                Fixed
+# PE           Proportional                                Equiprobable
+# PP           Proportional                                Proportional
+# PF           Proportional                                Fixed
+# FE           Fixed                                       Equiprobable
+# FP           Fixed                                       Proportional
+# FF           Fixed                                       Fixed
+
+# As to occurrence frequency:
+#   "Equiprobable" means that all taxa have equal probability to occur;
+#   "Proportional" means that the occurrence probability of a taxon is proportional to its observed occurrence frequency;
+#   "Fixed" means that the occurrence frequency of a taxon is fixed as observed.
+# As to species richness in each sample:
+#   "Equiprobable" means that all samples have equal probability to contain a taxon;
+#   "Proportional" means the occurrence probability in a sample is proportional to the observed richness in this sample;
+#   "Fixed" means the occurrence frequency of a taxon is fixed as observed
+#####
+
+SES = TRUE #Logic, whether to calculate standardized effect size, which is (observed dissimilarity - mean of null dissimilarity)/standard deviation of null dissimilarity. default is FALSE.
+RC = FALSE # Logic, whether to calculate modified Raup-Crick metric, which is percentage of null dissimilarity lower than observed dissimilarity x 2 - 1. default is FALSE.
+NST_width=4
+NST_height=8
+number_of_randomizations=100
+#/PARAMETERS ############################################################################################################
+
+
+tnst=tNST(comm=abund_table, group=meta_table[,"Groups",drop=F], 
+          rand=number_of_randomizations,
+          dist.method = distance_measure,
+          null.model=null_model,
+          processed.rand=TRUE, nworker=1,
+          SES=SES, RC=RC)
+
+#Extract mean NST/ST/MST values of groups
+df<-NULL
+measure_name<-names(tnst$index.grp)[grepl("^NST",names(tnst$index.grp))]
+tmp<-tnst$index.grp[,c("group",measure_name)]
+tmp$measure="NST"
+names(tmp)<-c("Groups","value","measure")
+df<-tmp
+measure_name<-names(tnst$index.grp)[grepl("^ST",names(tnst$index.grp))]
+tmp<-tnst$index.grp[,c("group",measure_name)]
+tmp$measure="ST"
+names(tmp)<-c("Groups","value","measure")
+df<-rbind(df,tmp)
+measure_name<-names(tnst$index.grp)[grepl("^MST",names(tnst$index.grp))]
+tmp<-tnst$index.grp[,c("group",measure_name)]
+tmp$measure="MST"
+names(tmp)<-c("Groups","value","measure")
+df<-rbind(df,tmp)
+
+
+pdf(paste("Stochasticity-Ratios_",null_model,"_",distance_measure,"_",as.character(number_of_randomizations),"_",as.character(SES),"_",as.character(RC),"_",as.character(abundance.weighted),"_",label,"_FIGURE",".pdf",sep=""),width=NST_width,height=NST_height)
+p<-ggplot(df, aes(x=Groups, y=value, fill=Groups)) 
+p<-p+geom_bar(stat="identity")+theme_minimal()
+p<-p+geom_text(aes(label=sprintf("%0.2f", round(value, digits = 2))), vjust=-0.3, size=3.5)
+p<-p+facet_wrap(~measure, strip.position="left", ncol=1,scales="free_y")
+p<-p+scale_fill_manual(values=colours)
+p<-p+ylim(0,1.1)
+p<-p+ylab("Stochasticity Ratios (scaled to 1)")
+p<-p+theme(strip.background = element_rect(fill="white"))+theme(panel.spacing = unit(2, "lines"),
+                                                                axis.text.x = element_text(angle = 90, hjust = 1))
+print(p)
+dev.off()
+
+#Perform PANOVA
+nst.pova=nst.panova(nst.result=tnst, rand=number_of_randomizations)
+#Convert group numbers to actual names
+for(i in 1:nlevels(meta_table$Groups)){
+  nst.pova$group1<-gsub(paste("^",i,"$",sep=""),levels(meta_table$Groups)[i],nst.pova$group1)
+  nst.pova$group2<-gsub(paste("^",i,"$",sep=""),levels(meta_table$Groups)[i],nst.pova$group2)
+}
+
+write.csv(nst.pova,file=paste("Stochasticity-Ratios_",null_model,"_",distance_measure,"_",as.character(number_of_randomizations),"_",as.character(SES),"_",as.character(RC),"_",as.character(abundance.weighted),"_",label,"_PANOVA",".csv",sep=""))
+write.csv(tnst$index.pair.grp,file=paste("Stochasticity-Ratios_",null_model,"_",distance_measure,"_",as.character(number_of_randomizations),"_",as.character(SES),"_",as.character(RC),"_",as.character(abundance.weighted),"_",label,"_PAIRWISE",".csv",sep=""))
+
+```
+
+DETECT THE MOST SIGNIFICANT CHANGES IN OTUS PER LAYER Detect taxa most
+significantly changed between groups by KW or DeSeq differential
+abundance analysis (SHORT VERSION)
+<http://userweb.eng.gla.ac.uk/umer.ijaz/projects/microbiomeSeq_Tutorial.html>
+
+```{r DESeq2}
+library(devtools)  # Load the devtools package
+remove.packages("agricolae")
+remove.packages("AlgDesign")
+remove.packages("units")
+remove.packages("udunits2")
+#install_github("umerijaz/microbiomeSeq")  # Install the package
+library(mixOmics) 
+library(DESeq2)
+library(metagenomeSeq)   
+    require(mixOmics)
+    require(edgeR)
+    require(DESeq2)
+    require(metagenomeSeq)
+    require(RFmarkerDetector)
+install.packages("agricolae")
+
+#check and adjust the OTU table inside the phyloseq object
+ssu_phy; sample_data(ssu_phy)
+ssu_phy_aggcl=tax_glom(ssu_phy, taxrank="class"); ssu_phy_aggcl
+
+#myphy_pk_logrel=normalise_data(myphy_pk_aggsp, norm.method = 'relative') # -> incorrect
+ssu_phy_logrel=normalise_data(t(ssu_phy_aggcl), norm.method = 'log-relative')  #correct 
+rowSums(otu_table(ssu_phy_logrel)) #if correct (1s) proceed as:
+
+diagdds =phyloseq_to_deseq2(ssu_phy_logrel, ~ Environment)
+diagdds
+diagdds=DESeq(diagdds, test="Wald", fitType="parametric")
+
+
+deseq_sig <- microbiomeSeq::differential_abundance((ssu_phy_aggcl), grouping_column = "Environment", processed_norm = "log-relative", 
+    pvalue.threshold = 0.05, lfc.threshold = 0, filename = F)
+p <- plot_signif(deseq_sig$plotdata, top.taxa = 25)
+print(p)
+pdf('pk_processed/Significant_taxa/Top25sp_zone.pdf', width=12, height=10 )
+print(p)
+dev.off()
+
+write.table(deseq_sig$plotdata, file="pk_processed//Significant_taxa/Top25sp_zone.txt", sep="\t")
+
+
+
+
+#Perform PLS-DA following steps from http://mixomics.org/mixmc/case-study-hmp-bodysites-repeated-measures/
+#Step 1:
+abund_table.plsda<-plsda(X=otu_table(ssu_phy_logrel), Y=sample_data(ssu_phy_logrel)$Environment, ncomp = nlevels(sample_data(ssu_phy_logrel)$Environment))
+abund_table.plsda.perf<-perf(abund_table.plsda,validation="loo",folds=5,progressBar=FALSE,auc=TRUE,nrepeat=10)
+
+#Step 3: tuning PLS-DA
+abund_table.plsda.tune<-tune.splsda(X=otu_table(ssu_phy_logrel), 
+                                    Y=sample_data(ssu_phy_logrel)$Environment,
+                                    ncomp=nlevels(sample_data(ssu_phy_logrel)$Environment),
+                                    test.keepX =tuning_KeepX,
+                                    validation="loo",
+                                    folds=5,
+                                    progressBar=TRUE,
+                                    dist=distance_matrix,
+                                    measure=misclassification_measure,
+                                    nrepeat=cross_validation_repeats)
+#Step 4:
+#Choose optimal number of variables to select on tuning_components comps:
+select.keepX = abund_table.plsda.tune$choice.keepX[1:2]
+#Now we run sPLS-DA multilevel analysis on the selected variables
+abund_table.splsda<-splsda(X=abund_table, Y=meta_table$Groups, ncomp = tuning_components,keepX = select.keepX)
+pdf("Step.4-sPLS-DA_plotIndiv.pdf")
+plotIndiv(abund_table.splsda,comp=1:2,group=meta_table$Groups,col=colours[1:length(levels(meta_table$Groups))],ind.names=FALSE,ellipse=draw_ellipse,legend=TRUE,title="sPLS-DA comp 1-2")
+dev.off()
+
+for (i in 1:2){
+  #To this list of selected features displayed from the most important 
+  #to the least important we can combine their stability measure from 
+  #the perf processed (i.e. how often were they selected across the different CV runs).
+  
+  selected.features.comp = selectVar(abund_table.plsda, comp = i)$name
+  tmp<-data.frame(abund_table.splsda.perf$features$stable[[i]][selected.features.comp])
+  write.csv(tmp,paste("Step.6.",i,"-sPLS-DA_stability.csv",sep=""))
+}
+
+```
+
+#trying sinkr in a differnet way, didnt quite work
+
+```{r}
+
+abund_table<-ssu$counts
+abund_table<-t(abund_table) #Transpose the data to have sample names on rows
+
+meta_table<-ssu$meta[, 8:20] #select only numerical columns
+
+#Just a check to ensure that the samples in meta_table are in the same order as in abund_table
+meta_table<-meta_table[rownames(abund_table),] 
+
+#Get grouping information
+#grouping_info<-data.frame(row.names=rownames(abund_table),t(as.data.frame(strsplit(rownames(abund_table),"_"))))
+#head(grouping_info)
+
+#Parameters
+cmethod<-"pearson" #Correlation method to use: pearson, pearman, kendall
+fmethod<-"bray" #Fixed distance method: euclidean, manhattan, gower, altGower, canberra, bray, kulczynski, morisita,horn, binomial, and cao
+vmethod<-"bray" #Variable distance method: euclidean, manhattan, gower, altGower, canberra, bray, kulczynski, morisita,horn, binomial, and cao
+nmethod<-"bray" #NMDS distance method:  euclidean, manhattan, gower, altGower, canberra, bray, kulczynski, morisita,horn, binomial, and cao
+
+#create bio.env function######## 
+bio.env <- function(fix.mat, var.mat, 
+                    fix.dist.method="bray", var.dist.method="euclidean", correlation.method="spearman",
+                    scale.fix=FALSE, scale.var=TRUE,
+                    processed.best=10,
+                    var.max=ncol(var.mat)
+){
+  if(dim(fix.mat)[1] != dim(var.mat)[1]){stop("fixed and variable matrices must have the same number of rows")}
+  if(var.max > dim(var.mat)[2]){stop("var.max cannot be larger than the number of variables (columns) in var.mat")}
+ 
+  require(vegan)
+ 
+  combn.sum <- sum(factorial(ncol(var.mat))/(factorial(1:var.max)*factorial(ncol(var.mat)-1:var.max)))
+ 
+  if(scale.fix){fix.mat<-scale(fix.mat)}else{fix.mat<-fix.mat}
+  if(scale.var){var.mat<-scale(var.mat)}else{var.mat<-var.mat}
+  fix.dist <- vegdist(fix.mat, method=fix.dist.method)
+  RES_TOT <- c()
+  best.i.comb <- c()
+  iter <- 0
+  for(i in 1:var.max){
+    var.comb <- combn(1:ncol(var.mat), i, simplify=FALSE)
+    RES <- data.frame(var.incl=rep(NA, length(var.comb)), n.var=i, rho=0)
+    for(f in 1:length(var.comb)){
+      iter <- iter+1
+      var.dist <- vegdist(as.matrix(var.mat[,var.comb[[f]]]), method=var.dist.method)
+      temp <- suppressWarnings(cor.test(fix.dist, var.dist, method=correlation.method))
+      RES$var.incl[f] <- paste(var.comb[[f]], collapse=",")
+      RES$rho[f] <- temp$estimate
+      if(iter %% 100 == 0){print(paste(round(iter/combn.sum*100, 3), "% finished"))}
+    }
+ 
+    order.rho <- order(RES$rho, decreasing=TRUE)
+    best.i.comb <- c(best.i.comb, RES$var.incl[order.rho[1]])
+    if(length(order.rho) > processed.best){
+      RES_TOT <- rbind(RES_TOT, RES[order.rho[1:processed.best],])
+    } else {
+      RES_TOT <- rbind(RES_TOT, RES)
+    }
+  }
+  rownames(RES_TOT)<-NULL
+ 
+  if(dim(RES_TOT)[1] > processed.best){
+    order.by.best <- order(RES_TOT$rho, decreasing=TRUE)[1:processed.best]
+  } else {
+    order.by.best <- order(RES_TOT$rho, decreasing=TRUE)
+  }
+  OBB <- RES_TOT[order.by.best,]
+  rownames(OBB) <- NULL
+ 
+  order.by.i.comb <- match(best.i.comb, RES_TOT$var.incl)
+  OBC <- RES_TOT[order.by.i.comb,]
+  rownames(OBC) <- NULL
+ 
+  out <- list(
+    order.by.best=OBB,
+    order.by.i.comb=OBC,
+    best.model.vars=paste(colnames(var.mat)[as.numeric(unlist(strsplit(OBB$var.incl[1], ",")))], collapse=",") ,
+    best.model.rho=OBB$rho[1]
+  )
+  out
+}
+
+#prep bv.step function ######
+bv.step <- function(fix.mat, var.mat, 
+                    fix.dist.method="bray", var.dist.method="euclidean", correlation.method="spearman",
+                    scale.fix=FALSE, scale.var=TRUE,
+                    max.rho=0.95,
+                    min.delta.rho=0.001,
+                    random.selection=TRUE,
+                    prop.selected.var=0.2,
+                    num.restarts=10,
+                    var.always.include=NULL,
+                    var.exclude=NULL,
+                    processed.best=10
+){
+ 
+  if(dim(fix.mat)[1] != dim(var.mat)[1]){stop("fixed and variable matrices must have the same number of rows")}
+  if(sum(var.always.include %in% var.exclude) > 0){stop("var.always.include and var.exclude share a variable")}
+  require(vegan)
+ 
+  if(scale.fix){fix.mat<-scale(fix.mat)}else{fix.mat<-fix.mat}
+  if(scale.var){var.mat<-scale(var.mat)}else{var.mat<-var.mat}
+ 
+  fix.dist <- vegdist(as.matrix(fix.mat), method=fix.dist.method)
+ 
+  #an initial removal phase
+  var.dist.full <- vegdist(as.matrix(var.mat), method=var.dist.method)
+  full.cor <- suppressWarnings(cor.test(fix.dist, var.dist.full, method=correlation.method))$estimate
+  var.comb <- combn(1:ncol(var.mat), ncol(var.mat)-1)
+  RES <- data.frame(var.excl=rep(NA,ncol(var.comb)), n.var=ncol(var.mat)-1, rho=NA)
+  for(i in 1:dim(var.comb)[2]){
+    var.dist <- vegdist(as.matrix(var.mat[,var.comb[,i]]), method=var.dist.method)
+    temp <- suppressWarnings(cor.test(fix.dist, var.dist, method=correlation.method))
+    RES$var.excl[i] <- c(1:ncol(var.mat))[-var.comb[,i]]
+    RES$rho[i] <- temp$estimate
+  }
+  delta.rho <- RES$rho - full.cor
+  exclude <- sort(unique(c(RES$var.excl[which(abs(delta.rho) < min.delta.rho)], var.exclude)))
+ 
+  if(random.selection){
+    num.restarts=num.restarts
+    prop.selected.var=prop.selected.var
+    prob<-rep(1,ncol(var.mat))
+    if(prop.selected.var< 1){
+      prob[exclude]<-0
+    }
+    n.selected.var <- min(sum(prob),prop.selected.var*dim(var.mat)[2])
+  } else {
+    num.restarts=1
+    prop.selected.var=1  
+    prob<-rep(1,ncol(var.mat))
+    n.selected.var <- min(sum(prob),prop.selected.var*dim(var.mat)[2])
+  }
+ 
+  RES_TOT <- c()
+  for(i in 1:num.restarts){
+    step=1
+    RES <- data.frame(step=step, step.dir="F", var.incl=NA, n.var=0, rho=0)
+    attr(RES$step.dir, "levels") <- c("F","B")
+    best.comb <- which.max(RES$rho)
+    best.rho <- RES$rho[best.comb]
+    delta.rho <- Inf
+    selected.var <- sort(unique(c(sample(1:dim(var.mat)[2], n.selected.var, prob=prob), var.always.include)))
+    while(best.rho < max.rho & delta.rho > min.delta.rho & RES$n.var[best.comb] < length(selected.var)){
+      #forward step
+      step.dir="F"
+      step=step+1
+      var.comb <- combn(selected.var, RES$n.var[best.comb]+1, simplify=FALSE)
+      if(RES$n.var[best.comb] == 0){
+        var.comb.incl<-1:length(var.comb)
+      } else {
+        var.keep <- as.numeric(unlist(strsplit(RES$var.incl[best.comb], ",")))
+        temp <- NA*1:length(var.comb)
+        for(j in 1:length(temp)){
+          temp[j] <- all(var.keep %in% var.comb[[j]]) 
+        }
+        var.comb.incl <- which(temp==1)
+      }
+ 
+      RES.f <- data.frame(step=rep(step, length(var.comb.incl)), step.dir=step.dir, var.incl=NA, n.var=RES$n.var[best.comb]+1, rho=NA)
+      for(f in 1:length(var.comb.incl)){
+        var.incl <- var.comb[[var.comb.incl[f]]]
+        var.incl <- var.incl[order(var.incl)]
+        var.dist <- vegdist(as.matrix(var.mat[,var.incl]), method=var.dist.method)
+        temp <- suppressWarnings(cor.test(fix.dist, var.dist, method=correlation.method))
+        RES.f$var.incl[f] <- paste(var.incl, collapse=",")
+        RES.f$rho[f] <- temp$estimate
+      }
+ 
+      last.F <- max(which(RES$step.dir=="F"))
+      RES <- rbind(RES, RES.f[which.max(RES.f$rho),])
+      best.comb <- which.max(RES$rho)
+      delta.rho <- RES$rho[best.comb] - best.rho 
+      best.rho <- RES$rho[best.comb]
+ 
+      if(best.comb == step){
+        while(best.comb == step & RES$n.var[best.comb] > 1){
+          #backward step
+          step.dir="B"
+          step <- step+1
+          var.keep <- as.numeric(unlist(strsplit(RES$var.incl[best.comb], ",")))
+          var.comb <- combn(var.keep, RES$n.var[best.comb]-1, simplify=FALSE)
+          RES.b <- data.frame(step=rep(step, length(var.comb)), step.dir=step.dir, var.incl=NA, n.var=RES$n.var[best.comb]-1, rho=NA)
+          for(b in 1:length(var.comb)){
+            var.incl <- var.comb[[b]]
+            var.incl <- var.incl[order(var.incl)]
+            var.dist <- vegdist(as.matrix(var.mat[,var.incl]), method=var.dist.method)
+            temp <- suppressWarnings(cor.test(fix.dist, var.dist, method=correlation.method))
+            RES.b$var.incl[b] <- paste(var.incl, collapse=",")
+            RES.b$rho[b] <- temp$estimate
+          }
+          RES <- rbind(RES, RES.b[which.max(RES.b$rho),])
+          best.comb <- which.max(RES$rho)
+          best.rho<- RES$rho[best.comb]
+        }
+      } else {
+        break()
+      }
+ 
+    }
+ 
+    RES_TOT <- rbind(RES_TOT, RES[2:dim(RES)[1],])
+    print(paste(round((i/num.restarts)*100,3), "% finished"))
+  }
+ 
+  RES_TOT <- unique(RES_TOT[,3:5])
+ 
+ 
+  if(dim(RES_TOT)[1] > processed.best){
+    order.by.best <- RES_TOT[order(RES_TOT$rho, decreasing=TRUE)[1:processed.best],]
+  } else {
+    order.by.best <-  RES_TOT[order(RES_TOT$rho, decreasing=TRUE), ]
+  }
+  rownames(order.by.best)<-NULL
+ 
+  order.by.i.comb <- c()
+  for(i in 1:length(selected.var)){
+    f1 <- which(RES_TOT$n.var==i)
+    f2 <- which.max(RES_TOT$rho[f1])
+    order.by.i.comb <- rbind(order.by.i.comb, RES_TOT[f1[f2],])
+  }
+  rownames(order.by.i.comb)<-NULL
+ 
+  if(length(exclude)<1){var.exclude=NULL} else {var.exclude=exclude}
+  out <- list(
+    order.by.best=order.by.best,
+    order.by.i.comb=order.by.i.comb,
+    best.model.vars=paste(colnames(var.mat)[as.numeric(unlist(strsplit(order.by.best$var.incl[1], ",")))], collapse=","),
+    best.model.rho=order.by.best$rho[1],
+    var.always.include=var.always.include,
+    var.exclude=var.exclude
+  )
+  out
+ 
+}
+#######
+
+res <- bio.env(wisconsin(abund_table), meta_table, fix.dist.method=fmethod, var.dist.method=vmethod,
+               correlation.method=cmethod, scale.fix=FALSE, scale.var=TRUE) 
+
+
+res.bv.step.biobio <- bv.step(wisconsin(abund_table), wisconsin(abund_table), 
+                              fix.dist.method=fmethod, var.dist.method=vmethod,correlation.method=cmethod,
+                              scale.fix=FALSE, scale.var=FALSE, max.rho=0.95, min.delta.rho=0.001,
+                              random.selection=TRUE, prop.selected.var=0.3, num.restarts=10, processed.best=10,
+                              var.always.include=NULL) 
+
+
+#Get the 5 best subset of taxa
+taxaNames<-colnames(abund_table)
+bestTaxaFit<-""
+for(i in (1:length(res.bv.step.biobio$order.by.best$var.incl)))
+{
+  bestTaxaFit[i]<-paste(paste(taxaNames[as.numeric(unlist(strsplit(res.bv.step.biobio$order.by.best$var.incl[i], split=",")))],collapse=' + '), " = ",res.bv.step.biobio$order.by.best$rho[i],sep="")
+}
+bestTaxaFit<-data.frame(bestTaxaFit)
+colnames(bestTaxaFit)<-"Best combination of taxa with similarity score"
+ 
+#> bestTaxaFit
+ 
+
+```

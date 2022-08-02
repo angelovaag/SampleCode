@@ -1,0 +1,947 @@
+---
+title: "16S-Vis-Pipe-v1"
+processed: html_document
+editor_options: 
+  chunk_processed_type: console
+---
+### load libraries & set working dir
+```{r instalations}
+# Install packages from CRAN
+#install.packages("devtools")
+library(devtools)
+#install.packages(c("vegan", "metacoder", "taxa", "ggplot2", "dplyr", "readr", "stringr", "agricolae", "ape", "reshape2", "broom", "tidyverse", "GUniFrac", "phangorn", "clustsig", "mixOmix", "scales", "grid", "survival", "data.table", "Biostrings","VennDiagram" ,"RColorBrewer", "biodiversityR"), repos = "http://cran.rstudio.com", dependencies = TRUE)
+install.packages(c("tcltk2","BiodiversityR"))
+library(tcltk2) #missing XQuartx
+library("BiodiversityR") #missing tcltk2
+
+#Installing from GitHub
+#install_github("MadsAlbertsen/ampvis2")
+library(ampvis2)
+
+#install.packages("remotes")
+#remotes::install_github("umerijaz/microbiomeSeq")
+#Error: Failed to install 'microbiomeSeq' from GitHub:
+  #(converted from warning) packages ‘GO.db’, ‘preprocessCore’, ‘impute’ are not available (for R version 4.0.2)
+  #installing these packages (and their dependancies(e.g. adespatial)) manually from bioconductor &CRAN : ok
+
+#installing from Bioconductor
+#source('http://bioconductor.org/biocManager')
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+  #install.packages("BiocManager")
+#BiocManager::install(c("phyloseq", "limma", "DESeq2))
+#BiocManager::install("GO.db"): with no compilation and no update, OK
+#BiocManager::install("preprocessCore")
+#BiocManager::install("impute")
+#install.packages("adespatial")
+
+
+```
+
+```{r load libraries}
+#Load libraries
+#install.packages("easypackages")
+library(easypackages) #can also install multiples with packages()
+x<-c("ggplot2", "reshape2", "broom", "dplyr", "tidyverse", "GUniFrac", "phangorn", "doParallel", "clustsig","scales", "grid", "vegan", "survival",  "data.table","ape", "Biostrings", "RColorBrewer", "devtools","ampvis2", "metacoder", "VennDiagram", "vegan", "limma","taxa",  "readr", "stringr", "phyloseq", "DESeq2", "microbiomeSeq", "morpheus", "htmltools")
+libraries(x)
+rm(x)
+
+#load(file ="R_data.RData")
+#load objects from another environment, test them and remove them
+#theloadedobjects <- load(file = "/Volumes/data/HWU-NRL-materials/NRL/Plastic_biodegradation/analysis/SSU_analyses/R_data.RData")
+#rm(list=c(theloadedobjects, "theloadedobjects"))
+```
+
+Set themes and colors
+```{r themes colors}
+theme_set(theme_bw())
+setwd("./")
+
+#Create a distinctive color pallete (a color_vector)
+library(RColorBrewer)
+  #use default palletes with distinct colors, then extract a vector of uniques in a vector (70 colors)
+  qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',] 
+  col_vector = unique(unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals))))
+  #samle the n # of colors from them
+  n=15 #pick between 2 and 70
+  tol=sample(col_vector, n);   tol
+  pie(rep(1,n), col=tol, labels = tol, cex=0.8)
+  #you can replace similar colors like this
+  #tol=replace(col, col %in% c("#FFFF33", "#FFF2AE", "#B15928"), c("snow1", "deeppink3", "peachpuff"))
+  col=c("deepskyblue1", "palevioletred1", "chocolate2", "seagreen1", "khaki", "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "snow1", tol)
+  pie(rep(1, length(col)), col=col, labels = col, cex=0.8)
+  
+  
+#Create pch gradient that I like (up to 19 values):
+  pich=c(16, 17, 15, 18, 2, 6, 20, 1, 0, 3, 4, 5, 7, 8, 9, 10, 12, 13, 11)
+```
+
+loading paths and defining data
+```{r paths and input}
+print("add metadata in the 'output-16Svis/' dir")
+
+input=NA
+input$path="~/Documents/CoreMicrobiome/SkinCollonization/trimmed_q15/processed/"
+input$counts=paste0(input$path, "ASV_counts.txt")
+input$meta=paste0(input$path, "Mapping.txt")
+input$tax=paste0(input$path, "ASV_taxtable.txt")
+input$seq=paste0(input$path, "ASV_seqs2.fna")
+
+
+output=NA
+output$name="output-16Svis/"
+dir.create(paste0(input$path, output$name))
+output$path=(paste0(input$path, output$name))
+print(paste("creating output at:", output$path))
+```
+
+
+### Loading data
+```{r load data}
+data=NA
+#load counts table (USED FULL table, not the filtered _flt4 one)
+data$counts=read.table(input$counts, header=T, check.names=F, row.names=1) ; head(data$counts)
+data$counts<-data$counts[ , order(names(data$counts))]; dim(data$counts) #order by column names
+#if phyloseq is to be used, do not transpose data, use as long rather than wide matrix
+
+#metadata
+data$meta=read.table(input$meta, header=T, check.names = F, sep='\t', row.names=1) ;    data$meta
+data$meta <- data$meta[ order(row.names(data$meta)), ];  head(data$meta) ; dim(data$meta) #Order by row names:
+
+#Load the tree using ape package (use a tree of ALL contigs/OTUs)
+#full_tree <- read.tree("ship_both_cREPSET_ornt_srt1ln_aln2.tre")
+#full_tree = midpoint(full_tree) #rooting tree midpoint; might take quite a while
+ 
+#Now load the taxonomy (taxonomy_ NOT filtered to flt4)
+data$tax<-read.table(input$tax, header=T, row.names=1, check.names=FALSE, sep="\t"); dim(data$tax)
+
+#load OTU sequence fasta (optional) (better use ALIGNED file)
+data$fasta=readDNAStringSet(input$seq); tail(data$fasta)
+```
+
+Removing mock samples
+```{r remove mock samples}
+print(paste0("remove mock samples and controls: ", names(data$counts)[1:4]))
+colnames(data$counts)
+data$mock = subset(data$counts, select=c(1:4, 56)); head(data$mock)
+data$counts = subset(data$counts, select=-c(1:4, 56))
+data$counts[1:6, 1:10]
+```
+
+Rarification curves
+```{r rarification}
+#Rarefaction curve per sample
+  pdf(paste0(output$path, "rarefication.pdf"), width=12)
+  rarecurve(t(data$counts), step=100, sample=min(colSums(data$counts)), label=T, xlim=c(0,max(colSums(data$counts))), xlab = "Number of Individuals", ylab = "Number of Species", cex=0.5, col="red", lwd=2)
+  dev.off()
+
+#Species accumulation throughout samples
+  pdf(paste0(output$path, "species_accumulation_curve.pdf"))
+  plot(specaccum(t(data$counts)), xlab='Number of Samples', ylab='Number of Species', lwd=2, col="red")
+  dev.off()
+```
+
+#Filtering & normalizaiton of data outside of phyloseq
+```{r filter data}
+print("before filtering stats")
+print(paste(c("#ASVs:", "#samples:") , dim(data$counts)) )
+print(paste("min ASV sum abundance before filtering:", min(rowSums(data$counts))))
+
+#filtering sample below counts/sampling depth:
+minreads=10000
+print(paste("removing samples with less than", minreads, "reads (sample depth)"))
+#print(paste("min sampling depth:", min(colSums(data$counts))))
+sampdepth = max(min(colSums(data$counts)) -1, minreads) #filter samples with at least minreads value or (the min numb of reads in a sample)-1
+data$flt=data$counts[, (colSums(data$counts) >= sampdepth) ]
+a <- which(colSums(data$flt)==min(colSums(data$flt)))
+
+#stats after filtering for sample depth:
+print(paste("remaining numb samples:", dim(data$flt)[2], "out of", dim(data$counts)[2]))
+print(paste("sample with lowest read count now:", names(a), "with", min(colSums(data$counts)), "reads"))
+
+#filtering ASVs appearing less than 5% of samples with count under 2:
+print("removing ASVs with individual abundace <2 and prevalence <5% of samples")
+##filter ASVs for sum abundance above 3
+    #flt=counts[rowSums(counts) >= 3 ,] ; dim(flt) 
+#filter ASVs for indiv abundance >2 and appearing in at least 5% of the samples
+data$flt=data$flt[rowSums(data$flt>2)>= 0.05*length(data$flt),  ]
+b <- which(rowSums(data$flt)==min(rowSums(data$flt)))
+
+print(paste(c("# ASVs after filtering:", "# samples after filtering:") , dim(data$flt)) )
+print(paste("ASV with lowest abunance was", names(b), ", which was represented by a total of", min(rowSums(data$flt)), "reads accross all samples") )
+
+#normalization
+data$freqs <- vegan::decostand(data$flt, method = "total", MARGIN = 2)
+data$freqs[1:8,1:8]
+ apply(data$freqs, 2, sum)# same as colSums(freqs)
+ 
+#create flt-tax table
+  data$tax_flt=data$tax[row.names(data$flt), ];
+```
+counts > 0.1*length() would filter each value below the given threshold -> is too stringent
+rowSums(counts) >= 5 means that commulatively ASVs need to have a value equal to or above threshold
+rowSums(counts>5), will give you same matrix in T/F for criteria individual count >5 
+
+###Other summary statistics
+```{r}
+library(dplyr)
+stats=NA
+stats$counts=NA
+stats$counts$x=melt(data$counts)
+stats$counts$totcount=sum(stats$counts$x$value); stats$counts$totcount
+stats$counts$std=round(sd(stats$counts$x$value),2); stats$counts$std
+stats$counts$sumlist=as.list(round(summary(stats$counts$x$value), 2)); stats$counts$sumlist
+stats$counts$density=density(stats$counts$x$value); stats$counts$density=round(max(summary(stats$counts$density$y)), 4); stats$counts$density
+stats$counts$summary=as.data.frame(c(
+                                    "Total number of reads in dataset:", stats$counts$totcount,
+                                    "Min number of reads/ASV", stats$counts$sumlist$Min.,
+                                    "Max number of reads/ASV", stats$counts$sumlist$Max.,
+                                    "Median", stats$counts$sumlist$Median,
+                                    "Mean", stats$counts$sumlist$Mean,
+                                    "standard deviation:", stats$counts$std,
+                                    "Table density", stats$counts$density))
+write.table(stats$counts$summary, paste0(output$path, "counts_summary.txt"), col.names = F, quote=F, row.names = F)
+
+
+stats$flt=NA
+stats$flt$x=melt(data$flt)
+stats$flt$totcount=sum(stats$flt$x$value); stats$flt$totcount
+stats$flt$std=round(sd(stats$flt$x$value),2); stats$flt$std
+stats$flt$sumlist=as.list(round(summary(stats$flt$x$value), 2)); stats$flt$sumlist
+stats$flt$density=density(stats$flt$x$value); stats$flt$density=round(max(summary(stats$flt$density$y)), 4); stats$flt$density
+stats$flt$summary=as.data.frame(c(
+                                    "Total number of reads in dataset:", stats$flt$totcount,
+                                    "Min number of reads/ASV", stats$flt$sumlist$Min.,
+                                    "Max number of reads/ASV", stats$flt$sumlist$Max.,
+                                    "Median", stats$flt$sumlist$Median,
+                                    "Mean", stats$flt$sumlist$Mean,
+                                    "standard deviation:", stats$flt$std,
+                                    "Table density", stats$flt$density))
+write.table(stats$flt$summary, paste0(output$path, "flt_summary.txt"), col.names = F, quote=F, row.names = F)
+
+```
+
+
+### Alpha diversity indexes
+```{r Alpha diversity on filtered samples }
+############ use flt counts   ########################################
+library(vegan)
+alpha=NA
+#Number of individuals per sample & min individuals
+  alpha$reads=colSums(data$flt);   alpha$reads
+  alpha$minindiv=min(colSums(data$flt));   alpha$minindiv
+#Observed species richness and maximum sp. richness:
+  alpha$SpRichness=vegan::specnumber(data$flt, MARGIN = 2);   alpha$SpRichness #number of species
+  alpha$obs_sprch_max=max(vegan::specnumber(data$flt, MARGIN = 2))  
+maxsamp= which(specnumber(data$flt, MARGIN = 2)==max(specnumber(data$flt, MARGIN = 2)))
+print(paste0("maximum number of species in a sample: ", alpha$obs_sprch_max, ". And is in sample: ", names(maxsamp)))
+  #expected species richness and maximum expected:
+  alpha$exp_sprch=rarefy(data$flt, alpha$minindiv, se=F, MARGIN = 2);  #alpha$exp_sprch
+  alpha$exp_sprch_max=max(rarefy(data$flt, alpha$minindiv, se=F, MARGIN = 2));  #alpha$exp_sprch_max
+paste("expected maximum number of species in a sample:", round(alpha$exp_sprch_max,0))
+  
+
+#Shannon, Simpson and Inverse Simpson,  Pielou's Evenness, dominance:
+  alpha$Shannon=vegan::diversity(as.matrix(data$flt), "shannon", MARGIN = 2);   alpha$Shannon
+  alpha$InvSimpson=vegan::diversity(data$flt, "inv", MARGIN = 2);   alpha$InvSimpson
+  alpha$Evenness=alpha$Shannon/log(specnumber(data$flt, MARGIN = 2)); alpha$Evenness #this is Pielou's Evenness index
+  #alpha$Fisher=fisher.alpha(data$flt, MARGIN=2)
+#install.packages("fossil")
+library(fossil) #https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+  alpha$chao1=apply(data$flt, 2, chao1) #fossil::chao1(data$flt, taxa.row = T)
+  
+#Amending the metadata table with the produced indices (based on fltR data)
+      alpha$temp=cbind(alpha$SpRichness, alpha$Evenness, alpha$reads, alpha$Shannon, alpha$InvSimpson, alpha$chao1)#, tree_div)
+colnames(alpha$temp)=c("SpRichness", "Evenness", "NumbReads", "Shannon", "InvSimpson", "chao1")
+      head(alpha$temp)
+      
+      data$meta=cbind(data$meta, round(alpha$temp, 2)) #extending the meta table
+      head(data$meta)      
+```
+
+```{r export data}
+  write.table(data$flt, paste0(output$path, "ASV_counts_flt.txt"), sep="\t", col.names=NA, quote = F, na="")
+  write.table(round(data$freqs, 4), paste0(output$path, "ASV_freqs_flt.txt"), sep="\t", col.names=NA, quote=F, na="")
+  write.table(data$meta, paste0(output$path, "ASV_meta_flt_ext.txt"), sep="\t", col.names=NA, quote=F, na="")
+  
+  data$tax_flt=data$tax[row.names(data$flt), ];
+  write.table(data$tax_flt, paste0(output$path, "ASV_tax_flt.txt"),  sep="\t", col.names=NA, quote=F, na="")
+  
+  data$fasta_flt=data$fasta[row.names(data$flt), ]
+  library(Biostrings)
+  writeXStringSet(data$fasta_flt, paste0(output$path, "ASV_seq_flt.fasta"), append=F, compress=F, format="fasta")
+```
+
+#### Alpha diveristy boxplots & ANOVAs
+  #do this all at once on each melt, try: https://stackoverflow.com/questions/37902978/one-way-anova-for-each-sub-group-in-a-melted-data-frame
+```{r alpha boxplots} 
+library(ggsignif)
+######   one code to rule them all:
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+  sst=NA
+for (i in groups){
+  data$meta$group=data$meta[[i]]
+  sst$sst=subset(data$meta, select=c(9:15))
+  sst$melt=melt(as.data.table(sst$sst), id.var="group"); tail(sst$melt)
+
+  p1=ggplot(sst$melt, aes(group, value)) + 
+    geom_boxplot(aes(x=group, y=as.numeric(as.character(value)), fill=group)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=paste("Alpha diveristy: ", i)) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=90, hjust=0.5, size=10), legend.position = "none"); p1
+  n<-length(unique(data$meta$group))
+  p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                    # map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, "ns"=1),
+                     step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+                 
+  qplotheight <- min(2.5*ceiling(length(data$flt)/3), 10)
+  
+  pdf(paste0(output$path,"AlphaDiv-", i, ".pdf"), width=14, height=qplotheight)
+  print(p2) #needs the print() for inside loop
+  dev.off()
+
+ #ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   capture.output(sst$models, file=paste0(output$path,"AlphaDiv-", i, "-ANOVA.txt"))
+}
+
+  colnames(data$meta)
+  sst$sst=subset(data$meta, select=c(2,4,9:14))
+  sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ Duration + Duration/TreatmentGroup, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   sst$models
+  capture.output(sst$models, file=paste0(output$path,"AlphaDiv-","Duration-TratmentGroup", "-ANOVA.txt"))
+```
+Error in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm) : 
+  Calling var(x) on a factor x is defunct.
+  Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.
+  
+#Grouped boxplots for alpha diversity
+```{r}
+colnames(data$meta)
+  data$meta$group=data$meta$Duration
+  sst$sst=subset(data$meta, select=c(2,4, 9:14))
+  sst$melt=melt(as.data.table(sst$sst), id.var=c("Duration", "TreatmentGroup")); (sst$melt)
+
+  p1=ggplot(sst$melt, aes(Duration, value)) + 
+    geom_boxplot(aes(x=Duration, y=as.numeric(as.character(value)), fill=TreatmentGroup)) + theme_bw() +
+    facet_wrap(~variable, scales="free") + labs(y="Alpha Diversity Measures", x=paste("Alpha diveristy")) +
+    #theme(text=element_text(size=16), legend.position = "none"); p1 
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=90, hjust=0.5, size=10), legend.position = "right", 
+          legend.title=element_text(size=12), legend.text=element_text(size=10)); p1
+  library(ggsignif)
+  n<-length(unique(data$meta$Duration))
+  p2= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                      step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p2 
+  pdf(paste0(output$path,"AlphaDiv-", "Duration~", "TreatmentGroup.pdf"), width=14, height=qplotheight)
+  print(p2); dev.off() #needs the print() for inside loop
+
+#ANOVA
+   sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ Duration + TreatmentGroup + TreatmentGroup/Duration, data=.))
+   sst$models=lapply(sst$nma$Model, summary) #not sure why it is not working
+   names(sst$models)=sst$nma$variable
+   sst$models
+   capture.output(sst$models, file=paste0(output$path,"AlphaDiv-", "TreatmentGroup~Duration", "-ANOVA.txt"))  
+
+```
+  m<-length(unique(data$meta$TreatmentGroup))
+  p3= p1 + geom_signif(comparisons=combn(rep(1:m, n), 2, simplify=F),
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                     step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p3
+
+
+### gPERMANOVA, pwPERMANOWA 
+http://cc.oulu.fi/~jarioksa/softhelp/vegan/html/adonis.html
+```{r PERMANOVA ANOSIM}
+###### GLOBAL PERMANOVA
+#important to have all sample files in same order!!!!
+data$flt=data$flt[ , sort(colnames(data$flt))] #sorts headers/colnames
+data$meta <- data$meta[sort(row.names(data$meta)), ] #sorts rows. 
+
+  #Adonis = global PERMANOVA from the vegan package, used on Bray-Curtis dissimilarity matrix
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  a=adonis(t(data$flt)~data$meta[[i]]); a
+  capture.output(a, file=paste0(output$path, "gPERMANOVA~", i , ".txt"))
+}
+
+  c=adonis(t(data$flt) ~ 
+             data$meta$Duration +
+             data$meta$TreatmentGroup +
+             data$meta$Duration/data$meta$TreatmentGroup + 
+             data$meta$Duration/data$meta$SubjectID+
+             data$meta$TreatmentGroup/data$meta$SubjectID); c
+capture.output(c, file=paste0(output$path, "gPERMANOVA~" , "all.txt"))
+##### PAIRWISE PERMANOVA #####
+        # PREPARE pair-wise function. To create a function "pairwise PERMANOWA" run step 1 script
+#pairwise.adonis <- function(x,factors, sim.function = 'daisy', sim.method = 'gower', p.adjust.m ='BH')
+  pairwise.adonis <- function(x,factors, sim.function="vegdist",sim.method="bray",p.adjust.m='BH')
+                {
+                library(vegan)
+                co = combn(unique(as.character(factors)),2)
+                pairs = c()
+                F.Model =c()
+                R2 = c()
+                p.value = c()
+                for(elem in 1:ncol(co)){
+                if(sim.function == 'daisy'){
+                library(cluster); x1 = daisy(x[factors %in% c(co[1,elem],co[2,elem]),],metric=sim.method)
+                } else{x1 = vegdist(x[factors %in% c(co[1,elem],co[2,elem]),],method=sim.method)}
+                ad = adonis(x1 ~ factors[factors %in% c(co[1,elem],co[2,elem])], permutations = 9999);
+                pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+                F.Model =c(F.Model,ad$aov.tab[1,4]);
+                R2 = c(R2,ad$aov.tab[1,5]);
+                p.value = c(p.value,ad$aov.tab[1,6])
+                }
+                p.adjusted = p.adjust(p.value,method=p.adjust.m)
+                sig = c(rep('',length(p.adjusted)))
+                sig[p.adjusted <= 0.05] <-'.'
+                sig[p.adjusted <= 0.01] <-'*'
+                sig[p.adjusted <= 0.001] <-'**'
+                sig[p.adjusted <= 0.0001] <-'***'
+                pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted,sig)
+                print("Signif. codes: 0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1")
+                return(pairw.res)
+                }
+
+colnames(data$meta)
+groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  e=pairwise.adonis(t(data$flt), data$meta[[i]]); e
+capture.output(e, file=paste0(output$path, "pwPERMANOVA~", i , ".txt"))
+}
+```
+
+### Beta diversity: nMDS (without biofit)  
+The biofit functionality requires a lot of customization for each study, so I am removing that part of the analysis
+```{r NMDS} 
+#recap of color choices
+#col=c("deepskyblue1", "palevioletred1", "orange", "seagreen1", "khaki", "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "snow1", tol)
+ # pie(rep(1, length(col)), col=col, labels = col, cex=0.8)
+  
+library(vegan)
+set.seed(11)#8
+
+abund.mds.bray=vegan::vegdist(t(data$flt), method = "bray")
+abund.mds.bray=vegan::monoMDS(abund.mds.bray, k=2, model="global")
+#abund.mds.bray= vegan::metaMDS(t(data$flt), dist="bray", trymax = 200)
+stressplot(abund.mds.bray) #ordination fit plot (stressplot); the less blue-dot scatter around the red line, the better
+ordiplot(abund.mds.bray, display= "sites", type = "text")
+
+groups=colnames(data$meta)[c(2,4)]
+pdf(paste0(output$path, "nMDS~bray", ".pdf"), height=qplotheight, width = qplotheight)
+        mds.figure=ordiplot(abund.mds.bray, type = "points")#, ylim= c(-1,1), xlim=c(-0.75,1)) #makes empty  plot
+        IvSp=data$meta$InvSimpson
+        ordisurf(abund.mds.bray~IvSp, main="",col="darkgrey", add = TRUE)
+       
+            #points infos
+    co=as.factor(data$meta[[4]]); col.gr=col #c("red", "orange", "green", "blue") 
+    ar=as.factor(data$meta[[2]]); pch.gr=pich #c(15, 16, 18, 17)
+    #bg=ssu$meta$TimeOfExposure; bg.gr=c("#D2B48C", "#F4A460", "#CD853F", "#8B4513")
+          #then plot the points:
+    points(mds.figure, "sites", col=col.gr[co], pch=pch.gr[ar], cex=2)# lwd=1.75,
+          #and legends 
+        legend(x="bottomright", legend=levels(co), pch=19, col = col.gr, cex=1, pt.lwd = 2, bg="white smoke")
+        legend(x="bottomleft", legend=levels(ar), pch=pch.gr, cex=1, pt.lwd = 2.5, pt.bg="white", bg="white smoke")
+        #legend(x="bottomright", legend=levels(bg), pch=21, cex=1.2, lwd=0, pt.bg = bg.gr, bg="white smoke")
+        legend(x="topright", legend = c("InvSimpson Diversity",
+                              paste("nMDS stress = ", round(abund.mds.bray$stress, digits = 4))),
+               cex=0.8, text.col=c("darkgray", "darkgray", "azure3"), bg="white smoke",
+               col=c("gray", "darkgray", "dim gray"), pch = c("~", ""))
+dev.off()
+
+
+######### ANOSIM ######
+data$flt.bray<-vegdist(t(data$flt)) #Bray-Curtix dissimilarity matrix
+
+  groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+  asm=anosim(data$flt.bray, data$meta[[i]]); summary(asm)
+capture.output(summary(asm), file=paste0(output$path, "ANOSIM~", i , ".txt"))
+} 
+```
+as a loop:
+groups=colnames(data$meta)[c(2,4)]
+for (i in groups){
+pdf(paste0(output$path, "nMDS~", i, ".pdf"), height=qplotheight, width = qplotheight)
+        mds.figure=ordiplot(abund.mds.bray, type = "points")#, ylim= c(-1,1), xlim=c(-0.75,1)) #makes empty  plot
+        IvSp=data$meta$InvSimpson
+        ordisurf(abund.mds.bray~IvSp, main="",col="darkgrey", add = TRUE)
+       
+            #points infos
+    co=as.factor(data$meta[[i]]); col.gr=c("red", "orange", "green", "blue") #how do I select # of col to match # of factors? Need a color vec with # col matching # of factors
+    #ar=as.factor(data$meta[[i]]); pch.gr=c(0,1,2,6)#(21,22,23)
+    #bg=ssu$meta$TimeOfExposure; bg.gr=c("#D2B48C", "#F4A460", "#CD853F", "#8B4513")
+          #then plot the points:
+    points(mds.figure, "sites", col=col.gr[co], pch= 19, lwd=1.75, cex=3)# pch=pch.gr[ar],
+          #and legends 
+        legend(x="bottomright", legend=levels(co), pch=19, col = col.gr, 
+               cex=1, pt.lwd = 2, bg="white smoke")
+        #legend(x="bottomleft", legend=levels(ar), pch=pch.gr, 
+         #      cex=1, pt.lwd = 2.5, pt.bg="white", bg="white smoke")
+        #legend(x="bottomright", legend=levels(bg), pch=21, 
+         #      cex=1.2, lwd=0, pt.bg = bg.gr, bg="white smoke")
+        legend(x="topright", legend = c("InvSimpson Diversity",
+                              paste("nMDS stress = ", round(abund.mds.bray$stress, digits = 4))),
+               cex=0.8, text.col=c("darkgray", "darkgray", "azure3"), bg="white smoke",
+               col=c("gray", "darkgray", "dim gray"), pch = c("~", ""))
+dev.off()
+}
+
+
+
+
+###Heatmap/profiles with AMPVIS2
+https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html
+```{r profiles as heatmap}
+data$taxdf=data$tax_flt
+data$taxdf$Species[data$taxdf$Species==""]<- "sp."; head(data$taxdf)
+data$taxdf$Species<-paste(data$taxdf$Genus, data$taxdf$Species); head(data$taxdf)
+data$taxdf$Species[data$taxdf$Species==" sp."]<-paste(data$taxdf$Family, "sp."); head(data$taxdf)
+data$taxdf$Species[data$taxdf$Species==" sp."]<-paste(data$taxdf$Order, "sp.");
+data$taxdf
+
+data$futab=cbind(data$flt, data$taxdf)
+meta=cbind(row.names(data$meta), data$meta)
+colnames(meta)[1]<- "SampleID"
+head(meta)
+library(ampvis2)
+data$amp=amp_load(data$futab, meta)
+
+#rarefication curve #2 (one with ampvis2)
+rarecurve <- amp_rarecurve(data$amp, color_by = "Duration",facet_by = "TreatmentGroup") +
+  ylab("Number of ASVs") + xlab("Number of reads (sequencing depth)"); rarecurve
+pdf(paste0(output$path, "rarefication_v2.pdf"), height=8, width=14); rarecurve; dev.off()
+
+
+#PCoA plot
+pcoa_bray <- amp_ordinate(data$amp, filter_species = 0.01, type = "PCOA",
+    distmeasure = "bray", sample_color_by = "TreatmentGroup",
+    detailed_output = TRUE, transform = "none", sample_shape_by = "Duration") + + scale_color_manual(values=col)
+pcoa_bray$plot
+pdf(paste0(output$path, "PCoA~", "bray", ".pdf")); pcoa_bray$plot; dev.off()
+
+nmds_bray <- amp_ordinate(data$amp, filter_species = 0.01, type = "NMDS",
+    distmeasure = "bray", sample_color_by = "TreatmentGroup",
+    detailed_output = TRUE, transform = "none", sample_shape_by = "Duration")
+nmds_bray$plot
+pdf(paste0(output$path, "NMDS~", "bray-ampvis", ".pdf")); pcoa_bray$plot; dev.off()
+
+
+# morpheus heatmap
+data$amptax <-amp_subset_samples(data$amp, normalise = TRUE)
+#devtools::install_github('cmap/morpheus.R')
+library(morpheus); library(htmltools)
+columns=list(colnames(data$amptax$abund))
+rows=list(row.names(data$amptax$abund))
+data$heatmap <- morpheus::morpheus(data$amptax$abund, Rowv=NULL, Colv=NULL,
+    colorScheme = list(scalingMode = "fixed", stepped = FALSE),
+    columnAnnotations = data$amptax$metadata, rowAnnotations = data$amptax$tax)
+data$heatmap
+save_html(data$heatmap, paste0(output$path, "heatmap.html"), background="white", libdir=paste0(output$path, "heatmap"))
+
+## ampvis heatmap (not bad!)
+library(ampvis2)
+amp_htmp=amp_heatmap(data$amp, group_by = "TreatmentGroup", facet_by="Duration", 
+                     tax_aggregate = "Species", tax_show=35, plot_values = T, 
+                     plot_values_size = 2, normalise=T, showRemainingTaxa = T, 
+                     tax_add = "Class") + 
+  theme(axis.text.x = element_text(angle = 45, size=10, vjust = 1),
+        axis.text.y = element_text(size=8), legend.position="right"); amp_htmp
+pdf(paste0(output$path, "amp_heatmap.pdf")); print(amp_htmp); dev.off()
+```
+
+Heatmap/profiles for mock samples 
+https://madsalbertsen.github.io/ampvis2/articles/ampvis2.html
+```{r profiles as heatmap for mock samples}
+dim(data$mock); rowSums(data$mock)
+#no need for meta table on mock samples
+
+#getting counts for samples:
+data$mock_summary=as.data.frame(colSums(data$mock))
+data$mock_summary <- cbind(rownames(data$mock_summary), data.frame(data$mock_summary))
+colnames(data$mock_summary) <- c("CntrlName", "NumberSequences") 
+data$mock_summary
+write.table(data$mock_summary, paste0(output$path, "amp_MOCK_summary.txt"), 
+            sep="\t", quote=F, row.names =F)
+
+#if you wish to select only specific mock samples
+#data$undetermined=subset(data$mock, select=5)
+#data$mock=subset(data$mock, select=-5); colnames(data$mock)
+
+
+#filter ASVs for indiv abundance >2 and appearing in at least 5% of the samples
+data$mock=data$mock[rowSums(data$mock>2)>= 0.05*length(data$mock),  ]
+b <- which(rowSums(data$mock)==min(rowSums(data$mock)))
+print(paste(c("Numb ASVs in mock samples:") , dim(data$mock))[1] )
+
+#filter out ASVs that belong to mock samples
+data$mock_tax=data$tax[row.names(data$mock), ]
+dim(data$mock_tax)
+#prep tax table for mock samples
+data$mock_tax$Species[data$mock_tax$Species==""]<- "sp."; head(data$mock_tax)
+data$mock_tax$Species<-paste(data$mock_tax$Genus, data$mock_tax$Species); head(data$mock_tax)
+data$mock_tax$Species[data$mock_tax$Species==" sp."]<-paste(data$mock_tax$Family, "sp."); head(data$mock_tax)
+data$mock_tax$Species[data$mock_tax$Species==" sp."]<-paste(data$mock_tax$Order, "sp.");
+data$mock_tax
+
+#counts+tax table
+data$mocktab=cbind(data$mock, data$mock_tax)
+#no need for meta table
+library(ampvis2)
+data$mockamp=amp_load(data$mocktab)#, data$meta)
+
+#morpheus heatmap 
+data$mockamp_tax <-amp_subset_samples(data$mockamp, normalise = TRUE)
+#devtools::install_github('cmap/morpheus.R')
+library(morpheus); library(htmltools)
+columns=list(colnames(data$mockamp$abund))
+max(rowSums(data$mockamp$abund))
+rows=list(row.names(data$mockamp$abund))
+data$mock_heatmap <- morpheus::morpheus(data$mockamp$abund, Rowv=NULL, Colv=NULL,
+    colorScheme = list(scalingMode = "fixed", stepped = FALSE), rowAnnotations = data$mockamp$tax)
+data$mock_heatmap
+save_html(data$mock_heatmap, paste0(output$path, "ATCC-heatmap.html"), background="white", libdir=paste0(output$path, "ATCC-heatmap"))
+
+#ampvis2 heatmaps
+library(ampvis2)
+amp_mock=amp_heatmap(data$mockamp, tax_aggregate = "Species", tax_show=35, 
+                     plot_values = T, plot_values_size = 2, normalise=T, 
+                     showRemainingTaxa = T, tax_add = "Class") + 
+  theme(axis.text.x = element_text(angle = 45, size=10, vjust = 1),
+        axis.text.y = element_text(size=8), legend.position="right"); amp_mock
+pdf(paste0(output$path, "amp_MOCK_heatmap.pdf")); print(amp_mock); dev.off()
+```
+
+####  Differential abundance:DESeq2 ### fixed***
+#and with enhanced volcano plots
+#BiocManager::install('EnhancedVolcano')
+library(EnhancedVolcano) 
+#https://bioconductor.org/packages/devel/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+
+```{r deseq2}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(plyr)
+library(DESeq2)
+library(stringr)
+#Separate samples based on Treatment Group, DESeq based on Duration
+data$WTmeta=data$meta %>% filter(TreatmentGroup %in% "H2M3_WT"); dim(data$WTmeta)
+data$WTabund=data$flt[, row.names(data$WTmeta)]; dim(data$WTabund)
+
+data$KOmeta=data$meta %>% filter(TreatmentGroup %in% "H2M3_KO"); dim(data$KOmeta)
+data$KOabund=data$flt[, row.names(data$KOmeta)]; dim(data$KOabund)
+
+#change things here to the Treatment Group you need
+Hypothesis="H2M3_KO"
+abund_table<- data$KOabund
+OTU_taxonomy=data$taxdf
+meta_table <- data$KOmeta
+groups=c("Duration") #"TreatmentGroup" ive separated the Duration out
+meta_table$Groups<-factor(as.character(data$KOmeta[[groups[1]]]))
+##################### DATA PREP ########################################
+# We will add 1 to the countData otherwise DESeq will fail with the error
+countData = round(as(abund_table, "matrix"), digits = 0)
+countData<-(countData+1) #do not transpose, keep samplenames as colnames
+head(countData)
+#DDS calculation ############################################################
+dds <- DESeqDataSetFromMatrix(countData, meta_table, as.formula( ~ Groups))# + TreatmentGroup + #Groups:TreatmentGroup))
+data_deseq_test = DESeq(dds, test="Wald", fitType="parametric")
+
+## Extract the results
+res = results(data_deseq_test, cooksCutoff = FALSE); res <- res[order(res$padj),];
+head(res)
+summary(res)
+res_tax = cbind(as.data.frame(res), as.matrix(countData[rownames(res), ]), OTU = rownames(res))
+
+
+#PARAMETERS ###########################
+which_level<-"Otus" #Phylum Class Order Family Genus Otus
+height_image=50
+sig = 1e-6 #0.05 #might need to be 1e-6
+fold = abs(2) #might need to be 1
+#log2FoldChange = This guy is a col of res_tax
+plot.point.size = 2
+label=T
+ntax=15 #number of taxonomies with most signif results, you want displayed
+tax.display = NULL
+tax_rank = "Species"
+
+# APPLY PARAMETERS ###########################
+res_tax_sig = subset(res_tax, padj < sig & fold < abs(log2FoldChange))
+res_tax_sig <- res_tax_sig[order(res_tax_sig$padj),]
+dim(res_tax); dim(res_tax_sig)
+## Plot the data
+### MA plot (mean abundance plot)
+res_tax$Significant <- ifelse(rownames(res_tax) %in% rownames(res_tax_sig) , "Yes", "No")
+res_tax$Significant[is.na(res_tax$Significant)] <- "No"
+colnames(res_tax)
+dim(res_tax_sig)
+
+
+library(EnhancedVolcano) #https://tinyurl.com/y3syd5vn
+p0=EnhancedVolcano(res_tax, x="log2FoldChange", y="padj",
+                   lab=rownames(res_tax), FCcutoff= fold, pCutoff=sig, 
+                   ylab="-Log10(padj)", title=paste(Hypothesis), titleLabSize = 18,
+                   subtitle = NULL, legendLabSize=10 , axisLabSize = 14); p0
+pdf(paste(output$path, "DeSeq2-EnhVolcanoPlot-",Hypothesis ,".pdf", sep=""));
+print(p0); dev.off()
+
+p2 <- ggplot(data = res_tax, aes(x=baseMean, y= log2FoldChange, color = Significant)) +
+  geom_point(size = plot.point.size) + scale_x_log10() + scale_color_manual(values=c("black", "red")) +
+  labs(x = "Mean Abundance", y = "Log2 fold change", title=paste(Hypothesis, "samples")) + theme_bw(); p2
+#pdf(paste(output$path, "DeSeq2-MeanAbundPlot-",Hypothesis ,".pdf", sep=""));
+#print(p2); dev.off()
+
+
+### the REAL plot, if there is significance
+res_tax_sig <- res_tax_sig[1:ntax,]; dim(res_tax_sig) #selecting top ntax number of taxa
+res_tax_sig_abund = cbind(as.data.frame(countData[rownames(res_tax_sig), ]), 
+                          OTU = rownames(res_tax_sig), padj = res_tax[rownames(res_tax_sig),"padj"]) 
+
+#Apply normalisation (either use relative or log-relative transformation)
+desdata<-log((abund_table+1)/(rowSums(abund_table)+dim(abund_table)[2]))
+desdata<-as.data.frame(t(desdata))
+
+#Now we plot taxa significantly different between the categories
+df<-NULL
+sig_otus<-res_tax[rownames(res_tax_sig),"OTU"]
+
+for(i in sig_otus){
+ tmp<-NULL
+ if(which_level=="Otus"){
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(paste(i,gsub(";+$","", paste(sapply(OTU_taxonomy[i,]$Species,as.character),collapse=";")))," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ } else {
+   tmp<-data.frame(desdata[,i],meta_table$Groups,rep(paste(i," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ }
+
+ if(is.null(df)){df<-tmp} else { df<-rbind(df,tmp)} 
+}
+head(df); dim(df)
+colnames(df)<-c("Value","Groups","Taxa"); head(df)
+
+library(ggplot2)
+
+p<-ggplot(df, aes(Groups, Value, color=Groups)) + ylab("Log-relative normalised") + labs(title=Hypothesis)
+p<- p +  geom_boxplot(outlier.size = 0) + 
+  geom_jitter(position = position_jitter(height = 0, width=0), alpha=0.5) + 
+  facet_wrap( ~ Taxa , scales="free_x",nrow=1) + theme_bw() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size = 14), legend.position = "none") + 
+  theme(strip.text.x = element_text(size = 12, colour = "black", angle = 90)); print(p)
+
+pdf(paste(output$path, "DeSeq2-", Hypothesis,"-Top", ntax, "ASVs-",groups[[1]], ".pdf", sep=""), width=ceiling((length(sig_otus)*120/200)+2.6), height=length(sig_otus)); print(p); dev.off()
+
+```
+
+
+#Deseq2 test with multiple conditions at once
+https://www.bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html
+https://lashlock.github.io/compbio/R_presentation.html
+```{r deseq2}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(plyr)
+library(DESeq2)
+library(stringr)
+
+#change things here to the Treatment Group you need
+Hypothesis="all-together"
+abund_table<- data$flt
+OTU_taxonomy=data$taxdf
+meta_table <- data$meta
+groups=c("Duration", "TreatmentGroup")# ive separated the Duration out
+meta_table$Group1<-factor(as.character(data$meta$Duration))
+meta_table$Group2<-factor(as.character(data$meta$TreatmentGroup))
+head(meta_table); head((OTU_taxonomy))
+##################### DATA PREP ########################################
+# We will add 1 to the countData otherwise DESeq will fail with the error
+countData = round(as(abund_table, "matrix"), digits = 0)
+countData<-(countData+1) #do not transpose, keep samplenames as colnames
+head(countData)
+#DDS calculation ############################# for nested formula: https://tinyurl.com/yyb64kge
+dds <- DESeqDataSetFromMatrix(countData, meta_table, as.formula( ~ Group2 + Group1:Group2)) 
+data_deseq_test = DESeq(dds, test="LRT", fitType = "parametric", reduced = ~1)
+results(data_deseq_test)
+
+## Extract the results
+res = results(data_deseq_test, cooksCutoff = FALSE); res <- res[order(res$padj),];
+head(res)
+summary(res)
+res_tax = cbind(as.data.frame(res), as.matrix(countData[rownames(res), ]), OTU = rownames(res))
+
+
+#PARAMETERS ###########################
+which_level<-"Otus" #Phylum Class Order Family Genus Otus
+height_image=50
+sig = 1e-6 #0.05 #might need to be 1e-6
+fold = abs(2) #might need to be 1
+#log2FoldChange = This guy is a col of res_tax
+plot.point.size = 2
+label=T
+ntax=15 #number of taxonomies with most signif results, you want displayed
+tax.display = NULL
+tax_rank = "Species"
+
+# APPLY PARAMETERS ###########################
+res_tax_sig = subset(res_tax, padj < sig & fold < abs(log2FoldChange))
+res_tax_sig <- res_tax_sig[order(res_tax_sig$padj),] #sorting
+dim(res_tax); dim(res_tax_sig)
+## Plot the data
+### MA plot (mean abundance plot)
+res_tax$Significant <- ifelse(rownames(res_tax) %in% rownames(res_tax_sig) , "Yes", "No")
+res_tax$Significant[is.na(res_tax$Significant)] <- "No"
+colnames(res_tax)
+dim(res_tax_sig)
+
+
+library(EnhancedVolcano) #https://tinyurl.com/y3syd5vn
+p0=EnhancedVolcano(res_tax, x="log2FoldChange", y="padj",
+                   lab=rownames(res_tax), FCcutoff= fold, pCutoff=sig, 
+                   ylab="-Log10(padj)", title=paste(Hypothesis), titleLabSize = 18,
+                   subtitle = NULL, legendLabSize=10 , axisLabSize = 14); p0
+pdf(paste(output$path, "DeSeq2-EnhVolcanoPlot-",Hypothesis ,".pdf", sep=""));
+print(p0); dev.off()
+
+p2 <- ggplot(data = res_tax, aes(x=baseMean, y= log2FoldChange, color = Significant)) +
+  geom_point(size = plot.point.size) + scale_x_log10() + scale_color_manual(values=c("black", "red")) +
+  labs(x = "Mean Abundance", y = "Log2 fold change", title=paste(Hypothesis, "samples")) + theme_bw(); p2
+#pdf(paste(output$path, "DeSeq2-MeanAbundPlot-",Hypothesis ,".pdf", sep=""));
+#print(p2); dev.off()
+
+
+### the REAL plot, if there is significance
+res_tax_sig <- res_tax_sig[1:ntax,]; dim(res_tax_sig) #selecting top ntax number of taxa
+res_tax_sig_abund = cbind(as.data.frame(countData[rownames(res_tax_sig), ]), 
+                          OTU = rownames(res_tax_sig), padj = res_tax[rownames(res_tax_sig),"padj"]) 
+
+#Apply normalisation (either use relative or log-relative transformation)
+desdata<-log((abund_table+1)/(rowSums(abund_table)+dim(abund_table)[2]))
+desdata<-as.data.frame(t(desdata))
+
+#Now we plot taxa significantly different between the categories
+df<-NULL
+sig_otus<-res_tax[rownames(res_tax_sig),"OTU"]
+
+for(i in sig_otus){
+ tmp<-NULL
+ if(which_level=="Otus"){
+   tmp<-data.frame(desdata[,i],meta_table$Group1, meta_table$Group2,
+  rep(paste(paste(i,gsub(";+$","", paste(sapply(OTU_taxonomy[i,]$Species,as.character),collapse=";")))," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ } else {
+   tmp<-data.frame(desdata[,i],meta_table$Group1, meta_table$Group2,rep(paste(i," padj = ",sprintf("%.5g",res_tax[i,"padj"]),sep=""),dim(desdata)[1]))
+ }
+
+ if(is.null(df)){df<-tmp} else { df<-rbind(df,tmp)} 
+}
+head(df); dim(df)
+colnames(df)<-c("Value","Group1", "Group2","Taxa"); head(df)
+
+library(ggplot2)
+
+p<-ggplot(df, aes(Group1, Value, color=Group2)) + ylab("Log-relative normalised") + labs(title=Hypothesis)
+p<- p +  geom_boxplot(outlier.size = 0) + 
+  geom_jitter(position = position_jitter(height = 0, width=0), alpha=0.5) + 
+  facet_wrap( ~ Taxa , scales="free_x",nrow=1) + theme_bw() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size = 14), legend.position = "top", legend.direction = "horizontal") + 
+  theme(strip.text.x = element_text(size = 12, colour = "black", angle = 90)); print(p)
+#p + guides(guide_legend(label.theme = element_text(angle=90))) how to rotate the legend
+
+pdf(paste(output$path, "DeSeq2-", Hypothesis,"-Top", ntax, "ASVs-",groups[[1]], ".pdf", sep=""), width=ceiling((length(sig_otus)*120/200)+2.6), height=length(sig_otus)); print(p); dev.off()
+
+```
+
+##Differential abundance with MaAsLin2
+https://huttenhower.sph.harvard.edu/maaslin/
+Citation: Himel Mallick, Lauren J. McIver, Ali Rahnavard, Siyuan Ma,Yancong Zhang, Long H. Nguyen1, Timothy L. Tickle, George Weingart, Boyu Ren, Emma Schwager, Ayshwarya Subramanian, Yiren Lu, Levi Waldron, Joseph N. Paulson, Eric A. Franzosa, Hector Corrada Bravo, Curtis Huttenhower. "Multivariable Association in Population-scale Meta-omics Studies".
+```{r maaslin2}
+#if(!requireNamespace("BiocManager", quietly = TRUE))
+ #   install.packages("BiocManager")
+#BiocManager::install("Maaslin2")
+library(Maaslin2)
+fit_dat=Maaslin2::Maaslin2(input_data = data$flt, input_metadata = data$meta, output = paste0(output$path, "maaslin-test"), fixed_effects = c("TreatmentGroup", "Duration"), cores = 8)
+
+fit_dat2=Maaslin2::Maaslin2(input_data = data$flt, input_metadata = data$meta, output = paste0(output$path, "maaslin-test2"), fixed_effects = c("TreatmentGroup", "Duration"), random_effects = "SubjectID")
+
+```
+
+
+Core microbiome from microbiome R package: microbiome
+https://microbiome.github.io/tutorials/Core.html
+```{r core microbiome}
+#BiocManager::install("microbiome")
+library(microbiome)
+
+#glom at species level
+level="class" #"species"
+ssu_phy_sp=taxa_level(ssu_phy, level)
+
+#subsample (if needed)
+sub="Estuary" #of the environment, or say "global"
+#ssu_phy_sp_sub = ssu_phy_sp
+ssu_phy_sp_sub <- subset_samples(ssu_phy_sp, Environment == "Estuary") 
+
+
+#converting to relative abundance data 
+pseq.rel <- microbiome::transform(ssu_phy_sp_sub, "compositional")
+head(otu_table(pseq.rel))
+colSums(otu_table(pseq.rel)[,1:9]) #should =1
+
+#calculates prevalance (how many (%) samples each OTU gets detected in), based on % abundance (detection)
+prv=prevalence(pseq.rel, detection = 1/100, sort = TRUE, count = TRUE) #shows # of samples in which OTU is 1%
+head(prv)
+prv=prevalence(pseq.rel, detection = 1/100, sort = TRUE, count = F) #shows # of samples in which OTU is 1%
+head(prv)
+
+#taxa that exceeds given prevalence: 1% compositional abundance threashold
+#detection is the % of samples
+core.taxa.standard <- core_members(pseq.rel, detection = 1/100, prevalence = 10/100)
+core.taxa.standard
+
+#a full phyloseq object of the core microbiota, at 90% compositional threshold
+pseq.core <- core(pseq.rel, detection = 1/100, prevalence = 1/100)
+
+#collapse onto tax level: error, not finidnign funciton aggregate_rate. Omit step
+  # pseq.core2 <- aggregate_rare(pseq.rel, "species", detection = 0, prevalence = .5)
+
+#obtaining taxa names from the phyloseq object
+core.taxa <- microbiome::taxa(pseq.core)
+
+#total core abundance and diversity
+core.abundance <- sample_sums(core(pseq.rel, detection = .01, prevalence = .95))
+
+
+#Use core line plots to deterine the abundance/prevalence threasholds with blanket analysis
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(0.01, 10, .05)
+ #ggplot(d) + geom_point(aes(x, y)) + scale_x_continuous(trans="log10", limits=c(NA,1))
+
+p=plot_core(pseq.rel, prevalences = prevalences, detections = det, plot.type = "lineplot") + xlab("Relative Abundance (%)"); p #Not sure but think it means ~60 taxa can describe my core
+#pdf("output/core_microbiome/core_line_plot.pdf"); p; dev.off()
+
+
+#Core microbiome heatmap
+library(RColorBrewer)
+prevalences <- seq(.05, 1, .05)
+detections <- 10^seq(log10(1e-3), log10(.2), length = 22)
+
+p <- plot_core(pseq.rel, plot.type = "heatmap", 
+             prevalences = prevalences,
+             detections = detections,
+         colours = rev(brewer.pal(5, "Spectral")),
+         min.prevalence = .2, horizontal = TRUE) ; print(p)
+pdf(paste0("output/core_microbiome/core-heatmap~", sub,"-", level, ".pdf"), width=10); print(p); dev.off()
+
+```
+

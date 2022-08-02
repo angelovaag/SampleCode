@@ -1,0 +1,631 @@
+---
+title: "Standard_visualization_v1"
+author: "Angelina Angelova"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+    toc_depth: 3
+    code_folding: hide
+    highlight: pygments
+    df_print: kable
+    theme: lumen
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 75
+---
+<style type="text/css">
+  body{
+  font-family: Palatino;
+  font-size: 14pt;
+  }
+  div.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+  }
+</style>
+
+<!-- Other font families I like: Arial Narrow, Optima, Palatino, Gill Sans , Comic Sans, Courier, Bradley Hand
+Font families at: https://www.w3.org/Style/Examples/007/fonts.en.html -->
+<!-- h1 {font-size: 34px;} --> <!-- h1.title {font-size: 38px;} -->
+<!-- h2 {font-size: 30px;} --> <!-- h3 {font-size: 24px;} -->
+<!-- h4 {font-size: 18px;} --> <!-- h5 {font-size: 16px;} -->
+<!-- h6 {font-size: 14px;} -->
+
+```{r global_opions, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.width = 8, fig.height = 8, collapse=T)#, size="small")#
+ library(kableExtra) #http://haozhu233.github.io/kableExtra/awesome_table_in_html.html#HTML_Only_Features
+# df %>% kable("html") %>% kable_styling("striped") %>% scroll_box(width = "100%")
+```
+
+```{r instalations, include=F}
+# Install packages from CRAN
+# install.packages("devtools")
+# library(devtools)
+# install.packages(c("vegan", "metacoder", "taxa", "ggplot2", "dplyr", "readr", "stringr", "agricolae", "ape", "reshape2", "broom", "tidyverse", "GUniFrac", "phangorn", "clustsig", "mixOmix", "scales", "grid", "survival", "data.table", "Biostrings","VennDiagram" ,"RColorBrewer", "biodiversityR"), repos = "http://cran.rstudio.com", dependencies = TRUE)
+# install.packages(c("tcltk2","BiodiversityR"))
+# library(tcltk2) #missing XQuartx
+# library("BiodiversityR") #missing tcltk2
+#Load libraries
+#install.packages("easypackages")
+#install.packages("fossil")#https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+# x<-c("ggplot2", "reshape2", "broom", "dplyr", "tidyverse", "GUniFrac", "phangorn", "doParallel", "clustsig","scales", "grid", "vegan", "survival",  "data.table","ape", "Biostrings", "RColorBrewer", "devtools","ampvis2", "metacoder", "VennDiagram", "vegan", "limma","taxa",  "readr", "stringr", "phyloseq", "DESeq2", "microbiomeSeq", "morpheus", "htmltools")
+
+#installing from Bioconductor
+#source('http://bioconductor.org/biocManager')
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+  #install.packages("BiocManager")
+#BiocManager::install(c("phyloseq", "limma", "DESeq2"))
+#BiocManager::install("GO.db"): with no compilation and no update, OK
+#BiocManager::install("preprocessCore")
+#BiocManager::install("impute")
+#install.packages("adespatial")
+
+#Installing from GitHub
+# install.packages("remotes") #requires R version >4.0 and manual BioConductor-dependencies
+# remotes::install_github("umerijaz/microbiomeSeq") 
+# library(microbiomeSeq) # watch for warnings aout S4Vectors and RNeXML
+# remotes::install_github("MadsAlbertsen/ampvis2")
+# install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+
+```
+
+```{r load libraries, include=F }
+library(easypackages) #can also install multiples with packages()
+x<-c("tidyverse", "ggplot2", "reshape2","broom", "dplyr", "data.table","ape", "docopt",
+     "Biostrings", "devtools","ampvis2", "readr", "stringr", "phyloseq", "htmltools", "fossil","pairwiseAdonis")
+libraries(x)
+rm(x)
+```
+
+```{r colors, include=F}
+#Create a distinctive color pallete (a color_vector)
+# library(RColorBrewer)
+#   qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',] 
+#   col_vector = unique(unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals))))
+#   n=15 #pick between 2 and 70
+#   tol=sample(col_vector, n);   tol
+#   pie(rep(1,n), col=tol, labels = tol, cex=0.8)
+#   col=c("deepskyblue1", "palevioletred1", "seagreen1", "khaki", "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "snow1", "chocolate2", tol)
+#   pie(rep(1, length(col)), col=col, labels = col, cex=0.8)
+#   #you can replace similar colors like this
+#   #tol=replace(col, col %in% c("#FFFF33", "#FFF2AE", "#B15928"), c("snow1", "deeppink3", "peachpuff"))
+# #Create chosen colors vector
+col=c("#F8766D", "#00BFC4", "#C77CFF", "#7CAE00", "#CD9600", "#00A9FF", "seagreen1", "darkkhaki", 
+      "maroon", "tomato", "plum1",  "chartreuse1", "#8DD3C7", "#FFF2AE" , "chocolate2", "#F0E442") #"#00BE67", "#00BFC4",
+library(scales)
+show_col(col)
+# length(col)
+
+#Create pch vector that I like (up to 19 values):
+  pich=c(15,17,18, 0:14, 16, 19, 20, 21:25)
+  
+# cleanup 
+# rm(col_vector, n, tol, qual_col_pals)
+```
+
+
+```{r, setup doc}
+doc<- "Usage: my_program.R [options]
+--help              show this screen
+--wdir PATH         give path to working dir, [e.g.: '~/Documents/CoreMicrobiome/Julianas_V4_OTUtab/date_072222'] 
+--map FILENAME      give name to mapping file [def: mapping.txt]
+--outdir DIRNAME    give name to output directory [def: 16Svis_plots]
+--title NAME        give name for title of report
+--sampDepth NUM     choose a sampleReadDepth for filtering [def:10000]
+--asvDepth NUMB      chose an asvDepth for filtering [def: 10]"
+doc
+```
+
+<!-- ```{r, automatic doc} -->
+<!-- auto -->
+<!-- docopt(doc) -->
+<!-- args <-docopt((doc)) -->
+<!-- ``` -->
+
+```{r, manual doc }
+#manual
+args <-docopt(doc, args=c(
+  "--wdir", "~/Documents/CoreMicrobiome/Julianas_V4_OTUtab/date_072222" ,
+  "--map", "mapping.txt",
+  "--outdir", "16Svis_plots",
+  "--title", "Community Visualization",
+  "--sampDepth", "10000",
+  "--asvDepth", "10") )
+args
+```
+
+<!-- ## Loading paths and defining data -->
+```{r paths and input, include=F}
+# set workdir
+setwd(args$wdir); 
+ # getwd()
+
+input=list()
+input$wdir=paste0(args$wdir, "/")
+input$path=paste0(args$wdir, "/dada2/")
+# input$fulltab=paste0(input$path, "dada2_ltrim20/ASV_fulltable.txt") # ditched
+input$counts=paste0(input$path,  "ASV_counts.txt")
+input$tax=paste0(input$path,     "ASV_taxtable.txt")
+# input$seq=paste0(input$path,     "ASV_seqs2.fna")
+input$meta=paste0(input$wdir, args$map)
+
+output=list()
+output$name=args$outdir
+output$path=(paste0(input$wdir ,output$name)); dir.create(output$path)
+cat("----- output created at:", output$path)
+```
+
+<br>
+
+<br>
+
+--------------------------------------------------------------------------------
+
+<!-- # Results {.tabset .tabset-pills} -->
+
+<!-- # YL27 transplant to OMM12 mice {.tabset .tabset-pills} -->
+# `r args$title` {.tabset .tabset-pills}
+
+## Input Data
+
+### Counts
+```{r load countdata}
+data=list()
+data$raw=list()
+#load counts table
+data$raw$counts=read.table(input$counts, header=T, check.names=F, row.names=1) ; #head(data$raw$counts)
+data$raw$counts<-data$raw$counts[ , order(names(data$raw$counts))]; dim(data$raw$counts) #order by column names
+data$raw$counts %>% kable("html") %>% kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "100%", height= "500px")
+```
+
+### Metadata
+```{r load metadata}
+#metadata
+data$meta=read.table(input$meta, header=T, check.names = F, sep='\t') ;   # data$meta
+data$meta <- data$meta[ order(row.names(data$meta)), ];  #head(data$meta) ;# dim(data$meta) 
+row.names(data$meta)=data$meta$SampleID
+data$meta %>% kable("html") %>% kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "100%", height= "500px")
+
+#load OTU sequence fasta (optional) (better use ALIGNED file)
+# data$raw$seqs=readDNAStringSet(input$seq); tail(data$raw$seqs)
+```
+
+### Taxonomy
+```{r laod taxonomies}
+#Load the taxonomy
+# tiers=c("Kingdom","Phylum", "Class", "Order", "Family", "Genus", "Species")
+data$raw$tax<-read.table(input$tax, header=T, row.names=1, check.names=FALSE, sep="\t", na.strings = "");
+#data$raw$tax; dim(data$raw$tax)
+
+taxdf=list()
+taxdf=data$raw$tax
+taxdf = taxdf %>% unite("Species", "Genus":"Species", sep=" ", remove=F) %>% 
+    relocate("Species", .after="Genus") %>% 
+    mutate(across("Species",str_replace, " NA", " sp.")) ; #tail(taxdf, n=16)
+# taxdf = taxdf %>% unite("Species", "Genus":"Species", sep=" ", remove=F) %>% 
+    # relocate("Species", .after="Genus") %>% 
+    # mutate(Species=coalesce(Species, Genus, Family, Order, Class, Phylum, Kingdom))
+# taxdf$Species<-with(taxdf, ifelse(is.na(Species), "sp.", Species )); head(taxdf, n=16)
+# taxdf$Species<-with(taxdf, ifelse(Species=="sp.", paste(taxdf$Genus, "sp."), Species )); #head(taxdf, n=16)
+taxdf$Species<-with(taxdf, ifelse(Species=="NA sp.", paste(taxdf$Family, "sp."), Species ));# head(taxdf, n=16)
+taxdf$Species<-with(taxdf, ifelse(Species=="NA sp.", paste(taxdf$Order, "sp."), Species ));# head(taxdf, n=16)
+taxdf$Species<-with(taxdf, ifelse(Species=="NA sp.", paste(taxdf$Class, "sp."), Species ));# head(taxdf, n=16)
+taxdf$Species<-with(taxdf, ifelse(Species=="NA sp.", paste(taxdf$Phylum, "sp."), Species ));# head(taxdf, n=16)
+taxdf$Species<-with(taxdf, ifelse(Species=="NA sp.", paste(taxdf$Kingdom, "sp."), Species ));# head(taxdf, n=16)
+cat("--------- Taxonomy after TAX refine")
+taxdf %>% kable("html") %>% kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "100%", height= "500px")
+# dim(taxdf)
+data$raw$tax=taxdf
+# dim(data$raw$tax)
+rm(taxdf) 
+```
+
+<!-- # Creating ampvis object -->
+```{r crating ampvis object, include=F}
+# data$raw$fulltab=cbind(data$raw$counts, data$raw$tax)
+data$raw$amp = amp_load(cbind(data$raw$counts, data$raw$tax), data$meta)
+data$raw$amp
+
+```
+<!-- # Separating control from real samples -->
+```{r remove mock samples, include=F}
+data$mock$amp=amp_subset_samples(data$raw$amp,  Treatment=="Control")
+data$exp$amp =amp_subset_samples(data$raw$amp,  Treatment %in% c("Experimental","Treatment","treatment","experimental") )
+```
+
+## Experimental data {.active .tabset .tabset-fade}
+
+### Community QC (unfiltered)
+```{r rarecurve samples, fig.width=10, fig.height=8}
+#rarefication curve for the samples
+# output$curve=paste0(output$path, "rarecurves/"); dir.create(output$curve)
+cat("------------ Samples with highest and lowest number of reads are:\n" ); 
+xmx=max(colSums(data$exp$amp$abund))
+rarecurve <- amp_rarecurve(data$exp$amp, color_by = "SubjectID",  stepsize = 100) + xlim(0,xmx/3) + #facet_by = "Treatment", 
+ ylab("Number of ASVs") + xlab("Number of reads (sequencing depth)") ; plot(rarecurve)
+# pdf(paste0(output$curve, "rarecurve_preFLT.pdf"), height=8, width=10); rarecurve; dev.off()
+#------
+rm(xmx, rarecurve)
+```
+
+<!-- ### Octave plot (unfiltered) -->
+<!-- ```{r octave plot, fig.width=8, fig.height=6} -->
+<!-- octave=amp_octave(data$exp$amp, group_by = "SampleID", tax_aggregate = "Species"); octave -->
+<!-- #------ -->
+<!-- rm(octave) -->
+<!-- ``` -->
+
+#### sampleDepth values (unfiltered)
+```{r read exploration}
+# readDepths
+cat("------- Defining sampleDepth of experimental samples")
+df=as.data.frame(sort(colSums(data$exp$amp$abund))); names(df)="sampleDepth"
+df
+cat("------- Samples have min seqDepth =", min(df), "reads, and max seqDepth =", max(df), "reads.")
+
+
+readDepth=as.numeric(args$sampDepth)
+cat("-------- Setting sampleDepth of experimental samples to:", readDepth)
+```
+A sampleDepth of 6000 was chosen as most rarecurves already reached plateau by this value
+
+<br>
+
+<br>
+
+--------------------------------------------------------------------------------
+
+### Filtering
+
+#### Sample filtration
+```{r, filter samples, collapse=F}
+# sort(colSums(data$exp$amp$abund))
+cat("========== Filtering SAMPLES with seqDepth <", readDepth)
+data$flt$amp=amp_subset_samples(data$exp$amp, minreads=readDepth)
+rem=ncol(data$exp$amp$metadata)-ncol(data$flt$amp$abund)
+cat("------- ", rem, "samples have been removed. ")
+rm(readDepth)
+```
+
+#### TAX filtration
+```{r, filter taxa, collapse=F}
+# prefiltering ASV info
+prevdf =  apply(data$exp$amp$abund, MARGIN=1, FUN = function(x){sum(x>0)}) # calc prev# for each ASV
+df=as.data.frame(sort(rowSums(data$exp$amp$abund)));
+df=cbind(df, sort(prevdf))
+names(df)=c("asvDepth", "asvPrev")
+cat("ASV depth and prevalence stats")
+df %>% kable("html") %>%  kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "30%", height= "500px")
+# dim(df)
+cat("------ raw experimental data has",dim(df)[1] , "ASVs before filtering")
+
+# prevalence filtering (appear in at least asvPREV samples)
+# asvPrev =2 # prevalence (each asv be presented in at least asvPREV samples)
+# asvDepth=2 # abundance (each asv be presented by at least asvDepth reads)
+# cat("------- removing ASVs represented by prevalence in <", asvPrev, "samples")
+    # filtering of ASVs, using prev%
+    # prevth=asvPrev*100/ncol(data$exp$amp$abund);                                            # converting prev# to prev%
+    # prevdf = apply(data$exp$amp$abund, MARGIN=1, FUN = function(x){100*sum(x>0)/length(x)}) # calc prev%  for each ASV
+    # data$flt$counts = data$exp$amp$abund[ prevdf > prevth , ];                              # filtering based on prev%
+    # dim(data$flt$counts)
+
+# filtering raw-ASVs, using prev#
+# prevdf =  apply(data$exp$amp$abund, MARGIN=1, FUN = function(x){sum(x>0)}) # calc prev# for each ASV
+# data$flt$counts = data$exp$amp$abund[ prevdf >= asvPrev , ];  #(1)          # filter based on prev#
+#   # dim(data$flt$counts)
+
+#filtering flt-ASVs, by asvDepth as well
+  # data$flt$counts = data$flt$counts[ rowSums(data$flt$counts) >= asvDepth , ] # filter based on asvDepth
+
+# OR filtering raw-ASVs by ONLY asvDepth
+    asvDepth=as.numeric(args$asvDepth) # abundance (each asv be presented with at least 2 reads)
+    cat("------- removing ASVs represented by <", asvDepth, "reads")
+    data$flt$counts = data$exp$amp$abund[ rowSums(data$exp$amp$abund) >= asvDepth , ] # filter based on asvDepth
+    df1=as.data.frame(sort(rowSums(data$flt$counts)));
+
+# checking filtration
+  df1=as.data.frame(sort(rowSums(data$flt$counts))); 
+  prevdf1 =  apply(data$flt$counts, MARGIN=1, FUN = function(x){sum(x>0)}) # calc prev# for each ASV
+  df1=cbind(df1, sort(prevdf1))
+  names(df1)=c("asvDepth", "asvPrev")
+  df1 %>% kable("html") %>%  kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "30%", height= "500px")
+  # dim(df1)
+  
+# filtering tax-object based on counts-filtration  
+  data$flt$tax =   data$raw$tax[row.names(data$flt$counts) , ]
+n=nrow(df)-nrow(df1)
+cat("------ filtered data now has", dim(df1)[1] , "ASVs")
+cat("------ filtering removed were", n, "ASVs from the experimental data")
+
+# -----
+rm(df, df1, prevdf, prevth, asvPrev, asvDepth, n, readDepth)
+```
+Filtering was performed based only on asvDepth (# of reads defining each ASV). Prevalence filtering was not performed in this case, as it was too stringent for the richness of these communities.
+
+
+<br>
+
+<br>
+
+--------------------------------------------------------------------------------
+
+### Community Analysis {.active}
+
+#### TAX profiles 
+
+##### Heatmap
+```{r experimental heatmaps, fig.height=8, fig.width=10}
+# output$heatmaps=paste0(output$path, "heatmap/"); dir.create(output$heatmaps)
+
+# ----------------- all real samples
+label1="Treatment"
+# label2="SampleID"
+
+sort(colSums(data$exp$amp$abund))
+amp_htmp=amp_heatmap(data$exp$amp, tax_aggregate = "Species", facet_by=label1, #group_by = label2, 
+                     tax_show=20, plot_values = T, plot_values_size = 3, normalise=T,
+                     showRemainingTaxa = T, tax_add = "Class") +
+        labs(title=paste("TAX profiles, grouped by", label1)) +
+        theme(axis.text.x = element_text(angle = 45, size=12, vjust = 1), plot.title = element_text(size=14),
+        axis.text.y = element_text(size=12), legend.position="right"); plot(amp_htmp)
+f# pdf(paste0(output$heatmaps, "samples_realALL_flt.pdf"), width=12, height = 8); plot(amp_htmp); dev.off()
+```
+
+```{r cleanup heatmap, include=F}
+#-----
+rm(amp_htmp, label1, alpha)
+# amp$sub=NULL
+```
+
+<br>
+
+<br> 
+
+--------------------------------------------------------------------------------
+
+
+## Controls
+
+### Rarecurve
+```{r rarecurve controls, fig.height=8, fig.width=10}
+#rarefication curve for the mock controls
+xmx=max(colSums(data$mock$amp$abund))
+mockcurve <- amp_rarecurve(data$mock$amp, color_by = "Treatment",  stepsize = 100) + xlim(0,xmx/3) + #facet_by = "Treatment", 
+ ylab("Number of ASVs") + xlab("Number of reads (sequencing depth)") ; plot(mockcurve)
+# pdf(paste0(output$curve, "mockcurve_controls.pdf"), height=8, width=10); mockcurve; dev.off()
+```
+
+```{r octave controls, fig.height=8, fig.width=10}
+# cat("----------- Octave plot where the number of taxa are represented in rarefied bins of read counts.")
+#  octave=amp_octave(data$mock$amp, group_by = "Treatment", tax_aggregate = "Species"); octave
+# # pdf(paste0(output$curve, "OctavePlot_CDf+_samples.pdf"), height=14, width=18); octave; dev.off()
+# #=========
+# rm(rarecurve, octave, xmx, mockcurve)
+#  
+# readDepths
+cat("------- Defining sampleDepth of mock samples")
+df=as.data.frame(sort(colSums(data$mock$amp$abund))); names(df)="sampleDepth"
+df
+```
+
+
+### Heatmap profiles
+```{r mock heatmaps samples, fig.height=8, fig.width=10}
+# output$heatmaps=paste0(output$path, "heatmap/"); dir.create(output$heatmaps)
+
+# ----------------- all real samples
+label1="Treatment"
+# label2="Description"
+
+sort(colSums(data$mock$amp$abund))
+amp_htmp=amp_heatmap(data$mock$amp, tax_aggregate = "Species", facet_by=label1, #group_by = label2, 
+                     tax_show=20, plot_values = T, plot_values_size = 3, normalise=F,
+                     showRemainingTaxa = T, tax_add = "Class") +
+        labs(title=paste("TAX profiles, grouped by", label1)) +
+        theme(axis.text.x = element_text(angle = 45, size=12, vjust = 1), plot.title = element_text(size=14),
+        axis.text.y = element_text(size=12), legend.position="right"); plot(amp_htmp)
+# pdf(paste0(output$heatmaps, "samples_realALL_flt.pdf"), width=12, height = 8); plot(amp_htmp); dev.off()
+```
+
+NegPCR control was not represented by any reads and was dropped from any analysis. 
+Heatmap profiles are displayed in absolute abundance, to better represent read richness per sample.
+
+<br>
+
+<br>
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+#### Alpha Diversity of filtered dataset
+
+#####  Alpha Indices
+<!-- # Calculating alpha diversity indexes -->
+```{r Alpha diversity on filtered samples, include =F }
+############ use flt counts   ########################################
+library(vegan)
+#install.packages("fossil")
+library(fossil) #https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/chao1
+
+alpha=NA
+#Number of individuals per sample & min individuals
+  alpha$reads=colSums(data$flt$counts);  # alpha$reads
+  alpha$SpRichness=vegan::specnumber(data$flt$counts, MARGIN = 2);  # alpha$SpRichness #number of species
+  alpha$Shannon=vegan::diversity(as.matrix(data$flt$counts), "shannon", MARGIN = 2);   #alpha$Shannon
+  alpha$InvSimpson=vegan::diversity(data$flt$counts, "inv", MARGIN = 2);  # alpha$InvSimpson
+  alpha$Evenness=alpha$Shannon/log(specnumber(data$flt$counts, MARGIN = 2)); #alpha$Evenness 
+  alpha$chao1=apply(data$flt$counts, 2, chao1) #fossil::chao1(data$flt, taxa.row = T)
+  
+#Amending the metadata table with the produced indices (based on fltR data)
+  alpha$temp=cbind(alpha$SpRichness, alpha$Evenness, alpha$reads, alpha$Shannon, alpha$InvSimpson, alpha$chao1)
+  colnames(alpha$temp)=c("SpRichness", "Evenness", "NumbReads", "Shannon", "InvSimpson", "chao1")
+  # head(alpha$temp)
+  
+# recreate the ampvis object for experimental data, with flt data
+  data$exp$amp=amp_load(cbind(data$flt$counts, data$flt$tax), data$meta)
+  data$exp$amp$metadata
+```
+
+```{r, metadata and ampvis object}
+  data$meta=cbind(data$exp$amp$metadata, round(alpha$temp, 3)) # extending the meta table
+  data$meta %>% kable("html") %>% kable_styling("striped", "condensed") %>% 
+  scroll_box(width = "100%", height= "500px")
+```
+
+```{r export indices, include =F }
+output$tables=paste0(output$path, "/tables"); dir.create(output$tables)
+
+  write.table(data$flt$counts, paste0(output$tables, "/sample_flt_ASVtab.txt"), 
+              sep="\t", col.names=NA, quote = F, na="")
+  write.table(data$meta, paste0(output$tables, "/sample_flt_METAtab.txt"), 
+              sep="\t", col.names=NA, quote=F, na="")
+  write.table(data$flt$tax, paste0(output$tables, "/sample_flt_TAXtab.txt"), 
+              sep="\t", col.names=NA, quote=F, na="")
+ 
+  write.table(data$mock$amp$abund, paste0(output$tables, "/ctr_raw_ASVtab.txt"), 
+              sep="\t", col.names=NA, quote = F, na="")
+  write.table(data$mock$amp$metadata, paste0(output$tables, "/ctr_raw_METAtab.txt"), 
+              sep="\t", col.names=NA, quote=F, na="")
+  write.table(data$mock$amp$tax, paste0(output$tables, "/ctr_raw_TAXtab.txt"), 
+              sep="\t", col.names=NA, quote=F, na="")
+
+```
+
+##### Alpha ANOVAs
+```{r alpha ANOVAs, collapse = F}
+# output$alpha=paste0(output$dir, "AlphaDiv/"); dir.create(output$alpha)
+# -------------- Alpha plots analysis of CCM -----------------------
+label1="Treatment"
+label2="Metadata1"
+
+  # colnames(data$meta)
+  sst=list()
+  sst$meta=data$meta
+  sst$meta$group1= factor(data$meta[[label1]])
+  sst$meta$group2= factor(data$meta[[label2]])#, levels=lvl[[label2]])
+  sst$meta=sst$meta[, c("group1","group2", "SpRichness","Evenness" , "Shannon", "chao1")]
+  sst$melt=melt(as.data.table(sst$meta), id.var=c("group1", "group2")); #(sst$melt)
+
+  #ANOVA first
+#Wanting to find if AlphaDivIndices are sigDiff bwetween Samp-Types (subgroup; grp1) for each TimePoint (NEST; grp2)
+try({
+  sst$nma=sst$melt %>% group_by(variable) %>% do(Model=aov(value ~ group1 + group2, data=.))
+  sst$models=lapply(sst$nma$Model, summary)
+  names(sst$models)=paste(sst$nma$variable, "ANOVA, group1 =", label1) # ,"& group2 =", label2)
+  sst$models
+})
+ # capture.output(c("group1= SampleType, group2=TimePoint (weeks), batch=FLT", sst$models), 
+ #                file=paste0(output$alpha, "AlphaDivTAX_ANOVA.txt"))  
+```
+
+##### Alpha Boxplots
+```{r alpha boxplots,  fig.width=8, fig.height=8}
+  #boxplot second
+  library(ggsignif)
+  p1=ggplot(sst$melt, aes(group2, value)) + facet_wrap(~variable, scales="free") + 
+     geom_boxplot(aes(x=group2, y=as.numeric(as.character(value), stat="identity", position="dodge"), 
+                      fill=group1)) + theme_bw() + 
+    labs(y="Alpha Diversity Measures", x=label2, fill=label1) +
+    theme(text=element_text(size=16), axis.text.x = element_text(angle=45, hjust=1, size=14),
+          legend.position = "right", legend.title=element_text(size=12), #legend.position = "none"
+          legend.text=element_text(size=10)); p1
+   n<-length(unique(sst$meta$group2))
+   p1= p1 + geom_signif(comparisons=combn(n, 2, simplify = F), 
+                      test="t.test",# map_signif_level = T, #or F for actual p-values or
+                      map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, " "=1),
+                    # map_signif_level = c("***"= 0.001, "**"=0.01, "*"= 0.05, "." = 0.065, "ns"=1),
+                     step_increase = 0.05, color="gray60", tip_length = 0.01, vjust = 0.55);  p1 
+# pdf(paste0(output$alpha , "AlphaDivTAX", ".pdf"), width=12, height=10); print(p1); dev.off()
+# rm(sst, p1)
+# 
+#  #ANOVA for the 2 TimePoints
+# # cat("========= gANOVA for ShannonDiv on SampleType at each TimePoint")
+#   sub=lvl[[label2]]
+# for (i in sub){
+# sst$nma=subset(sst$melt, group2 == i & variable=="Shannon")
+# sst$nma=sst$nma %>% group_by(variable) %>% do(Model=aov(value ~ group1 , data=.))
+#   sst$models=lapply(sst$nma$Model, summary)
+#   names(sst$models)=paste0(sst$nma$variable, "Div ANOVA with group1 = ",  label1, ", and TimePoint = ", i)
+#   print(sst$models)
+# # capture.output(c(paste("group1= SampleType, TimePoint= ",i, "batch=FLT"), sst$models ), 
+# #                file=paste0(output$alpha, "AlphaDivTAX_at_",i,"weeks_ANOVA.txt"))  
+# sst$nma=NULL; sst$models=NULL; 
+# }
+rm(i, sub, p1, sst, n, label1, alpha)
+```
+Note: no Treatment separation. Gender separation were just chosen for plotting. 
+
+<br>
+
+<br>
+
+--------------------------------------------------------------------------------
+
+
+
+#### Beta Diversity
+
+##### Beta PCoA
+```{r ordinations all real samples, fig.height=8, fig.width=10}
+# output$beta=paste0(output$path, "BetaDiv/"); dir.create(output$beta)
+
+# ----------------- CTR/Cdiff+ samples
+label1="Treatment"
+label2="Gender"
+label3="SampleID"
+
+#PCOA plots
+pcoa_bray <- amp_ordinate(data$exp$amp, filter_species = 0.01, type = "PCOA", sample_label_by = label3,
+    distmeasure = "bray", sample_color_by = label1, sample_point_size = 3, sample_label_size = 2,
+    detailed_output = TRUE, transform = "none", sample_shape_by = label2)
+pcoa_bray$plot= pcoa_bray$plot + scale_shape_manual(values=pich) + scale_color_manual(values=col) +
+  labs(title=paste0("PCoA plot")) +
+  theme(plot.title = element_text(size=16), legend.title=element_text(size=14), legend.text=element_text(size=12)) ;
+plot(pcoa_bray$plot)
+
+```
+
+##### Beta Stats
+<!-- # http://cc.oulu.fi/~jarioksa/softhelp/vegan/html/adonis.html -->
+```{r PERMANOVA ANOSIM, warning=F, collapse=F}
+#### Creating output folder
+# output$tests=paste0(output$dir, "betaDiv/");dir.create(output$tests)
+label1="Treatment"
+###### 1) GLOBAL PERMANOVA, 2) pair-wise PERMANOVA & 3) ANOSIM
+# explore the effect of RW/WT  & Time Exposure on the community 
+### --------------
+CMTmtx <- vegdist(t(data$flt$counts))
+    #gPERMANOVA
+cat("============ gPERMANOVA, label1 = ", label1)
+q=adonis2(CMTmtx ~ data$meta[[label1]]); 
+print(q) 
+    #ANOSIM
+cat("============ ANOSIM, label1 = ", label1)
+q <- anosim(CMTmtx, data$meta[[label1]]); 
+print(q)
+
+### --------------------------- ^^^
+rm(c,i,q,s, CMTmtx, sub)
+```
+Note: all samples were "recipients" so donor ~vs~ recipients community composition analysis could not be performed. Community composition showed significant difference based on TreatmentGroup, with this factor being the sole contributor to the differences in the communities (ANOSIM R = 1). 
+
+<br>
+
+<br>
+
+--------------------------------------------------------------------------------
+
+<!-- ## save my environment -->
+```{r save environment, include=F}
+# rm(batch)
+save.image(paste0(output$path, "analysisR_v1.RData"))
+```

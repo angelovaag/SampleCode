@@ -1,0 +1,48 @@
+	Kingdom	Phylum	Class	Order	Family	Genus	Species	OTU
+ASV1	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides sp.	ASV1
+ASV2	Bacteria	Verrucomicrobiota	Verrucomicrobiae	Verrucomicrobiales	Akkermansiaceae	Akkermansia	Akkermansia muciniphila	ASV2
+ASV3	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Lachnoclostridium	Lachnoclostridium sp.	ASV3
+ASV4	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Blautia	Blautia sp.	ASV4
+ASV5	Bacteria	Firmicutes	Bacilli	Bacillales	Bacillaceae	Bacillus	Bacillus sp.	ASV5
+ASV6	Bacteria	Firmicutes	Bacilli	Staphylococcales	Staphylococcaceae	Staphylococcus	Staphylococcus sp.	ASV6
+ASV7	Bacteria	Firmicutes	Bacilli	Lactobacillales	Streptococcaceae	Streptococcus	Streptococcus mutans	ASV7
+ASV8	Bacteria	Firmicutes	Bacilli	Lactobacillales	Streptococcaceae	Streptococcus	Streptococcus sp.	ASV8
+ASV9	Bacteria	Proteobacteria	Gammaproteobacteria	Burkholderiales	Sutterellaceae	Parasutterella	Parasutterella sp.	ASV9
+ASV10	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Muribaculaceae	Muribaculum	Muribaculum intestinale	ASV10
+ASV11	Bacteria	Proteobacteria	Gammaproteobacteria	Pseudomonadales	Moraxellaceae	Acinetobacter	Acinetobacter sp.	ASV11
+ASV12	Bacteria	Deinococcota	Deinococci	Deinococcales	Deinococcaceae	Deinococcus	Deinococcus radiodurans	ASV12
+ASV13	Bacteria	Proteobacteria	Gammaproteobacteria	Enterobacterales	Enterobacteriaceae	Escherichia/Shigella	Escherichia/Shigella sp.	ASV13
+ASV14	Bacteria	Firmicutes	Clostridia	Clostridiales	Clostridiaceae	Clostridium_sensu_stricto_1	Clostridium_sensu_stricto_1 sp.	ASV14
+ASV15	Bacteria	Firmicutes	Bacilli	Lactobacillales	Enterococcaceae	Enterococcus	Enterococcus sp.	ASV15
+ASV16	Bacteria	Proteobacteria	Gammaproteobacteria	Burkholderiales	Neisseriaceae	Neisseria	Neisseria meningitidis	ASV16
+ASV17	Bacteria	Proteobacteria	Gammaproteobacteria	Pseudomonadales	Pseudomonadaceae	Pseudomonas	Pseudomonas sp.	ASV17
+ASV18	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides vulgatus	ASV18
+ASV19	Bacteria	Firmicutes	Bacilli	Erysipelotrichales	Erysipelotrichaceae		Erysipelotrichaceae sp.	ASV19
+ASV20	Bacteria	Actinobacteriota	Actinobacteria	Bifidobacteriales	Bifidobacteriaceae	Bifidobacterium	Bifidobacterium sp.	ASV20
+ASV21	Bacteria	Firmicutes	Bacilli	Lactobacillales	Lactobacillaceae	Lactobacillus	Lactobacillus sp.	ASV21
+ASV22	Bacteria	Firmicutes	Bacilli	Lactobacillales	Lactobacillaceae	Lactobacillus	Lactobacillus sp.	ASV22
+ASV23	Bacteria	Firmicutes	Clostridia	Oscillospirales	Oscillospiraceae	Flavonifractor	Flavonifractor plautii	ASV23
+ASV24	Bacteria	Proteobacteria	Alphaproteobacteria	Rhodobacterales	Rhodobacteraceae	Rhodobacter	Rhodobacter sp.	ASV24
+ASV25	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Porphyromonadaceae	Porphyromonas	Porphyromonas gingivalis	ASV25
+ASV26	Bacteria	Campilobacterota	Campylobacteria	Campylobacterales	Helicobacteraceae	Helicobacter	Helicobacter pylori	ASV26
+ASV27	Bacteria	Actinobacteriota	Actinobacteria	Actinomycetales	Actinomycetaceae	Actinomyces	Actinomyces odontolyticus	ASV27
+ASV29	Bacteria	Firmicutes	Bacilli	Staphylococcales	Staphylococcaceae	Staphylococcus	Staphylococcus aureus	ASV29
+ASV30	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides vulgatus	ASV30
+ASV31	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides vulgatus	ASV31
+ASV32	Bacteria	Firmicutes	Clostridia	Clostridiales	Clostridiaceae	Clostridium_sensu_stricto_1	Clostridium_sensu_stricto_1 beijerinckii	ASV32
+ASV33	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Tannerellaceae	Parabacteroides	Parabacteroides goldsteinii	ASV33
+ASV34	Bacteria	Firmicutes	Bacilli	Lactobacillales	Lactobacillaceae	Lactobacillus	Lactobacillus sp.	ASV34
+ASV35	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides sp.	ASV35
+ASV36	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Lachnospiraceae_UCG-006	Lachnospiraceae_UCG-006 sp.	ASV36
+ASV37	Bacteria	Firmicutes	Clostridia	Oscillospirales	Oscillospiraceae	Colidextribacter	Colidextribacter sp.	ASV37
+ASV38	Bacteria	Deferribacterota	Deferribacteres	Deferribacterales	Deferribacteraceae	Mucispirillum	Mucispirillum schaedleri	ASV38
+ASV41	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Roseburia	Roseburia sp.	ASV41
+ASV42	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	ASF356	ASF356 sp.	ASV42
+ASV43	Bacteria	Firmicutes	Clostridia				Clostridia sp.	ASV43
+ASV44	Bacteria	Actinobacteriota	Actinobacteria	Propionibacteriales	Propionibacteriaceae	Cutibacterium	Cutibacterium sp.	ASV44
+ASV45	Bacteria	Firmicutes	Clostridia	Peptostreptococcales-Tissierellales	Peptostreptococcaceae	Peptostreptococcus	Peptostreptococcus sp.	ASV45
+ASV46	Bacteria	Firmicutes	Clostridia	Peptostreptococcales-Tissierellales	Peptostreptococcaceae	Peptostreptococcus	Peptostreptococcus sp.	ASV46
+ASV47	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Lachnospiraceae_UCG-006	Lachnospiraceae_UCG-006 sp.	ASV47
+ASV49	Bacteria	Proteobacteria	Gammaproteobacteria	Enterobacterales	Morganellaceae	Moellerella	Moellerella sp.	ASV49
+ASV50	Eukaryota						Eukaryota sp.	ASV50
+ASV51	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales			Bacteroidales sp.	ASV51

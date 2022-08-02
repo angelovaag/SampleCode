@@ -1,0 +1,23 @@
+	Kingdom	Phylum	Class	Order	Family	Genus	Species	OTU
+ASV1	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides sp.	ASV1
+ASV2	Bacteria	Verrucomicrobiota	Verrucomicrobiae	Verrucomicrobiales	Akkermansiaceae	Akkermansia	Akkermansia muciniphila	ASV2
+ASV3	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Lachnoclostridium	Lachnoclostridium sp.	ASV3
+ASV4	Bacteria	Firmicutes	Clostridia	Lachnospirales	Lachnospiraceae	Blautia	Blautia sp.	ASV4
+ASV5	Bacteria	Firmicutes	Bacilli	Bacillales	Bacillaceae	Bacillus	Bacillus sp.	ASV5
+ASV6	Bacteria	Firmicutes	Bacilli	Staphylococcales	Staphylococcaceae	Staphylococcus	Staphylococcus sp.	ASV6
+ASV7	Bacteria	Firmicutes	Bacilli	Lactobacillales	Streptococcaceae	Streptococcus	Streptococcus mutans	ASV7
+ASV8	Bacteria	Firmicutes	Bacilli	Lactobacillales	Streptococcaceae	Streptococcus	Streptococcus sp.	ASV8
+ASV9	Bacteria	Proteobacteria	Gammaproteobacteria	Burkholderiales	Sutterellaceae	Parasutterella	Parasutterella sp.	ASV9
+ASV10	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Muribaculaceae	Muribaculum	Muribaculum intestinale	ASV10
+ASV12	Bacteria	Deinococcota	Deinococci	Deinococcales	Deinococcaceae	Deinococcus	Deinococcus radiodurans	ASV12
+ASV13	Bacteria	Proteobacteria	Gammaproteobacteria	Enterobacterales	Enterobacteriaceae	Escherichia/Shigella	Escherichia/Shigella sp.	ASV13
+ASV14	Bacteria	Firmicutes	Clostridia	Clostridiales	Clostridiaceae	Clostridium_sensu_stricto_1	Clostridium_sensu_stricto_1 sp.	ASV14
+ASV15	Bacteria	Firmicutes	Bacilli	Lactobacillales	Enterococcaceae	Enterococcus	Enterococcus sp.	ASV15
+ASV16	Bacteria	Proteobacteria	Gammaproteobacteria	Burkholderiales	Neisseriaceae	Neisseria	Neisseria meningitidis	ASV16
+ASV19	Bacteria	Firmicutes	Bacilli	Erysipelotrichales	Erysipelotrichaceae		Erysipelotrichaceae sp.	ASV19
+ASV20	Bacteria	Actinobacteriota	Actinobacteria	Bifidobacteriales	Bifidobacteriaceae	Bifidobacterium	Bifidobacterium sp.	ASV20
+ASV21	Bacteria	Firmicutes	Bacilli	Lactobacillales	Lactobacillaceae	Lactobacillus	Lactobacillus sp.	ASV21
+ASV23	Bacteria	Firmicutes	Clostridia	Oscillospirales	Oscillospiraceae	Flavonifractor	Flavonifractor plautii	ASV23
+ASV28	Bacteria	Firmicutes	Bacilli	Erysipelotrichales	Erysipelotrichaceae		Erysipelotrichaceae sp.	ASV28
+ASV34	Bacteria	Firmicutes	Bacilli	Lactobacillales	Lactobacillaceae	Lactobacillus	Lactobacillus sp.	ASV34
+ASV35	Bacteria	Bacteroidota	Bacteroidia	Bacteroidales	Bacteroidaceae	Bacteroides	Bacteroides sp.	ASV35

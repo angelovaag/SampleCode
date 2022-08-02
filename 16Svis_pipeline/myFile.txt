@@ -1,0 +1,6 @@
+it appears every project will use
+- its own terminology => make terminology consistent for script: "SampleID, Treatment, Metadata1"
+- its own visualization groups (some need per Treatment, others need per SubjectID, thirds need by Metadata1, whatever): this is unavoidable, standard script will not work
+- lack of groups requires completely different vis layouts, in order to look good (covered some of that in code)
+- presence of groups requires different layout and should include statistics (covered that in code)
+- docopts does have abug and does not take in arguments through the commandline (docopts sucks but works)
