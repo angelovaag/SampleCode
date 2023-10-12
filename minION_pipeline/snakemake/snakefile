@@ -1,0 +1,133 @@
+configfile: "/home/angelovaag/MyScripts/minION_pipeline/config.yaml"
+include: "/home/angelovaag/MyScripts/minION_pipeline/utils.smk"
+
+
+rule all:
+	input:
+		expand("TEDreads/{sampName}_clean.fastq.gz", sampName=samples),
+		expand("TAXprofiles/kr2_logs/{sampName}_kREPORT.txt", sampName=samples),
+		expand("TAXprofiles/4krona/{sampName}_4krona.txt", sampName=samples),
+		expand("TAXprofiles/{sampName}_NOclass.fastq.gz", sampName=samples),
+		"TAXprofiles/TAXplots_minION.html"
+		# expand("TEDreads/{sampName}_te.fastq.gz", sampName=samples),
+
+	
+
+rule clean_w_fastp:
+	input:
+		raw = "raw/{sampName}.fastq.gz" #get_fastq_gz #
+	output:
+		te = "TEDreads/{sampName}_te.fastq.gz",
+	log:
+		loghtml = "TEDreads/fp_logs/{sampName}_log.html",
+		logjson = "TEDreads/fp_logs/{sampName}_log.json",
+		logtext = "TEDreads/fp_logs/{sampName}_log.txt"
+	threads: 16
+	shell:
+		"""
+		echo '------  trimming & filtering with fastp'
+		module load fastp
+		mkdir -p TEDreads/fp_logs
+		fastp -i {input.raw} -o {output.te} -h {log.loghtml} -j {log.logjson} --thread {threads} \
+		 -y -c --trim_poly_x -e 10 -l 250 -5 --cut_front_mean_quality 20 -3 \
+		 --cut_tail_mean_quality 15 -W 4 2> {log.logtext}
+		"""
+
+rule decontam:
+	input: 
+		te = rules.clean_w_fastp.output.te,
+		DB = config["decontamDB"]
+	threads: 16
+	output:
+		ted  = "TEDreads/{sampName}_clean.fastq", ## assuming fastA
+		kout = "TEDreads/kr2_logs/{sampName}_kr2_decontamREPORT.txt"
+	params:
+		## cannot put this as output, because will cause missing files if nothing classified
+		host = "TEDreads/{sampName}_host.fastq"
+	log: 
+		klog = "TEDreads/kr2_logs/{sampName}_ted_kr2_bigLOG.txt",
+		dlog = "TEDreads/kr2_logs/{sampName}_kr2_decontamLOG.txt"
+	shell:
+		"""
+		mkdir -p TEDreads/kr2_logs
+		module load kraken
+		kraken2 --use-names --gzip-compressed --threads {threads} --confidence 0.05 \
+			--db {input.DB} --output {log.klog} --report {output.kout} \
+			--unclassified-out {output.ted} --classified-out {params.host} \
+			{input.te} 2> {log.dlog} 
+		"""
+
+
+rule classify:
+	input:
+		reads = rules.decontam.output.ted,
+		DB = config["classDB"]
+	threads: 16
+		# threads = $SLURM_CPUS_PER_TASK
+	output:
+		kreport = "TAXprofiles/kr2_logs/{sampName}_kREPORT.txt",
+		YSclass = "TAXprofiles/{sampName}_YSclass.fastq",
+		NOclass = "TAXprofiles/{sampName}_NOclass.fastq"
+	log: 
+		klog = "TAXprofiles/kr2_logs/{sampName}_bigLOG.txt",
+		log = "TAXprofiles/kr2_logs/{sampName}_k2_classLOG.txt"
+	shell: 
+		"""
+		mkdir -p TAXprofiles/kr2_logs
+		module load kraken
+		kraken2 --use-names --threads {threads} --confidence 0.05 --db {input.DB} --output {log.klog} \
+		--report {output.kreport} --classified-out {output.YSclass} --unclassified-out {output.NOclass} \
+		{input.reads} 2> {log.log}
+		"""
+
+### mk krona rules
+rule make_krona_files:
+	input:
+		kreport = rules.classify.output.kreport,
+		script = config["kreport2krona_script"]
+	output:
+		krona = "TAXprofiles/4krona/{sampName}_4krona.txt"
+	shell:
+		""" 
+		mkdir -p AXprofiles/4krona/
+		python3 {input.script} -r {input.kreport} -o {output.krona}
+		""" 
+
+rule run_krona:
+	input: 
+		expand(rules.make_krona_files.output.krona, sampName=samples)
+	output:
+		"TAXprofiles/TAXplots_minION.html"
+	shell:
+		"""
+		module load kronatools
+		ktImportText {input} -o {output}
+		"""
+
+
+### zipper rules
+rule zip_fastqs:
+	input:
+		q1 = "TAXprofiles/{sampName}_NOclass.fastq",
+		q2 = "TEDreads/{sampName}_clean.fastq"
+	threads: 16
+	output:
+		z1 = "TAXprofiles/{sampName}_NOclass.fastq.gz",
+		z2 = "TEDreads/{sampName}_clean.fastq.gz"
+	shell:
+		"""
+		module load pigz
+		echo '--- zipping fastq files'
+		pigz -f TAXprofiles/*.fastq -p {threads}
+		pigz -f TEDreads/*.fastq -p {threads} 
+		"""
+
+###cleanup rule
+rule clean_up:
+	shell:
+		"""
+		echo '--- cleaning output....'
+		rm TAXprofiles/kr2_logs/*bigLOG.txt TEDreads/kr2_logs/*bigLOG.txt
+		rm TEDreads/*te.fastq.gz
+		"""
+
