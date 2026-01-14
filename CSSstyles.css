@@ -1,0 +1,34 @@
+body{
+  font-family: Palatino;
+  font-size: 14pt;
+}
+
+div.main-container {
+  max-width: none;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
+/* Custom CSS to move "show code" button to the left */
+button.code-folding-btn {
+    float: left !important;
+}
+
+
+ 
+table {
+  font-family: "Palatino";
+}
+
+/* <!-- <style type="text/css"> -->
+/* <!--   body{ -->
+/* <!--   font-family: Palatino; -->
+/* <!--   font-size: 14pt; -->
+/* <!--   } -->
+/* <!--   div.main-container { -->
+/* <!--   max-width: 1800px; -->
+/* <!--   margin-left: auto; -->
+/* <!--   margin-right: auto; -->
+/* <!--   } -->
+/* <!-- </style>  -->

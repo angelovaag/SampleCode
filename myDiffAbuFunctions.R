@@ -2,6 +2,7 @@
 # --------------------------------------- my DiffAbu plotter function --------------------------------------
 myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm_add = 1,  
                         effZ=1, sig = 0.2, ntax=25, check=F, fltONsig=T,  mkLongiPlot = F, 
+                        pt_size = 1, pt_alpha = 0.3,
                         fc.color=NULL, fc.ncol=NULL, fc.nrow=NULL, colVector = myColors$discrete, 
                         kble_width="100%", kble_heigth="500px", volcLabSize = 3, x.angle = 0 ){
   
@@ -10,7 +11,7 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   DA_type   <- DA_obj$DA_type
   amp_obj   <- DA_obj$amp_obj
   counts <- amp_obj$abund
-  tax    <- amp_obj$tax
+  tax    <- amp_obj$tax ## %>% mutate(across(everything(), ~ gsub(" |-|'|:|;", ".", .x))) 
   meta   <- amp_obj$metadata %>% select(any_of(c(fcts, rand, corr))) %>% mutate_all(factor)
   
   ##' flt &fmt DA_resMTX    
@@ -47,8 +48,8 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
     kable_classic_2(full_width=F) %>%
     kable_styling("striped") %>% scroll_box(width = kble_width, height = kble_heigth)
   
-  info = c( DA_type ,"total differential TAXa ~", fcts[[1]],"(at ", agg_at, "level) : ",  
-            dim(DA_resMTX.sig)[1], ".", '\ \n', 
+  info = c( DA_type ,"differential TAXa (at ", agg_at, "level):\ \n", 
+            "TAXa differential for", fcts[[1]],": ", dim(DA_resMTX.sig)[1], '\ \n', 
             "Significance threshold < ", sig, '\ \n', 
             "Effect size threshold >", effZ, '\ \n')
   
@@ -94,11 +95,12 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   # print(sel_colors)
   
   
-  DA_resMTX.sig.pos <- DA_resMTX.sig %>% top_n(ntax, abs(log2fc)) #top SIG +&-
-  DA_resMTX.sig.neg <- DA_resMTX.sig %>% filter(log2fc > 2.5) %>% top_n(5, log2fc)## grab some + values
+  DA_resMTX.sig.pos <- DA_resMTX.sig %>% top_n(ntax, abs(log2fc)) #top SIG + & -
+  DA_resMTX.sig.neg <- DA_resMTX.sig %>% filter(log2fc > effZ) %>% top_n(5, log2fc)## grab some extra + values
   DA_resMTX.sig.bin <- rbind(DA_resMTX.sig.pos, DA_resMTX.sig.neg) %>% arrange(log2fc) %>%
     distinct(TAX, .keep_all = TRUE) # removes rbind()  redundancy
-  # print(DA_resMTX.sig.bin)
+  # DA_resMTX.sig.bin %<>% arrange(desc(abs(EffectSize)))
+  print(DA_resMTX.sig.bin)
   # print(DA_resMTX.sig.neg)
   # print(DA_resMTX.sig.bin)
   
@@ -115,7 +117,8 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   nrmCounts <- normMyData(countsMTX = counts, norm_method = norm, pseudocount = norm_add)
   if(check==T){   print("---- checkpoint0.5 dataNorm")   ; 
     print(nrmCounts[[1]][1:10, 1:10] %>% t() %>% as.data.frame()); print(DA_resMTX.sig$TAX)  }
-  txfCounts <- nrmCounts[[1]] %>% t() %>% as.data.frame() %>% select(DA_resMTX.sig$TAX)
+  trfCounts <- nrmCounts[[1]] %>% t() %>% as.data.frame() %>% #rename_with(make.names) %>% ## fixes name differences for selection
+     select(DA_resMTX.sig$TAX) 
   ylabel    <- nrmCounts[[2]]; 
   
   
@@ -128,13 +131,11 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   # try({  
   for(i in topSigTAX){
     tmp<-NULL
-    tmp <- data.frame(txfCounts[,i], meta, rep(i),
-                      rep(paste0(DA_resMTX.sig$Taxon[DA_resMTX.sig$TAX == i], " (", i,")" ) ),
+    tmp <- data.frame(trfCounts[,i], meta, rep(i),
+                      rep(paste0(DA_resMTX.sig$Taxon[DA_resMTX.sig$TAX == i], " (", i,")" ) ), ## good if on OTU level
+                      # rep(paste0(DA_resMTX.sig$Taxon[DA_resMTX.sig$TAX == i], " ",   i    ) ), ## to manually remove the ()
                       rep( DA_resMTX.sig$EffectSize[DA_resMTX.sig$TAX== i]) , 
                       rep( DA_resMTX.sig$Adj.Significance[DA_resMTX.sig$TAX==i]) )
-    # rep(paste0("EffectSize = ", sprintf("%.4g",
-    # top_sig_tax$effect[top_sig_tax$TAX== i]), \n"; qval.BH = ", 
-    # sprintf("%.1e", top_sig_tax$glm.eBH[top_sig_tax$TAX==i]) ) ),
     if(is.null(df4plot0)){df4plot0<-tmp} else { df4plot0<-rbind(df4plot0,tmp)}
   }
   # print(df4plot0)
@@ -148,47 +149,60 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   
   ##' --------  EffectSize boxplot for sigTAXa 
   if(is.null(df4plot0)){ df4plot <- NULL; foldChangeBox.plot <- NULL }else{
-    df4plot <- df4plot0 %>% dplyr::mutate(SigVal=paste0("Eff.size=", formatC(EffectSize, digits=2),
-                                                        "; pVal =", formatC(Adj.Significance,
-                                                                            format="E", digits=2)) )
-    df4plot$Value %>% range() %>% min() -> minflt ## grabbing the minimum post-norm value (representing abundance == 0)
-    # df4plot %<>% filter(!Value == minflt) ## removing samples with abundance == 0
-    df4plot %<>% unique()
+    
+    ## couldnt get this to work like this so maing if/else statement
+    # effzlab <- paste0("Eff.size=",  formatC(df4plot0$EffectSize, digits=2), "; " )
+    # pvallab <- paste0("Adj.pVal=", formatC(df4plot0$Adj.Significance, format="E", digits=2))
+    # sigvlab <- ifelse(DA_type %in% c("lmerDA", "bamDA"), pvallab, paste0(effzlab, pvallab) )
+    # df4plot <- df4plot0 %>% dplyr::mutate(SigVal= ifelse(DA_type %in% c("lmerDA", "bamDA"),
+    #                   paste0("Adj.pVal=", formatC(Adj.Significance, digits=2, format="E")), ## if true, prints only p-val
+    #                   paste0("Eff.size=", formatC(EffectSize, digits=2), "; "  ,            ## if not true, prints effectSize & pvlaue
+    #                          "Adj.pVal=", formatC(Adj.Significance, digits=2, format="E"))
+    #                  ) )
+        if(DA_type %in% c("lmerDA", "bamDA")){
+           df4plot <- df4plot0 %>% dplyr::mutate(SigVal=paste0("Eff.size=", formatC(EffectSize, digits=2), "; "  ,
+                                                               "Adj.pVal =", formatC(Adj.Significance, digits=2, format="E")) )
+          }else{
+           df4plot <- df4plot0 %>% dplyr::mutate(SigVal=paste0("Eff.size=", formatC(EffectSize, digits=2), "; "  ,
+                                                               "Adj.pVal =", formatC(Adj.Significance, digits=2, format="E")) )
+        }
     
     ##' try DF4plot
     if(check==T){
       print("---- checkpoint2 DF4plot w meta")
       print(df4plot %>% head) 
-      print(paste("min abundance is:", minflt, "; ylabel is:", ylabel))
+      # print(paste("min abundance is:", minflt, "; ylabel is:", ylabel))
       
     }
     
     # fc.color=NULL; fc.ncol=4; fc.nrow=NULL;
     if(is.null(fc.color)){fc.color = fcts[[1]] }
-    fc.title = paste(DA_type, "top differential TAXa (", agg_at, "level)")
-    fc.subtl = paste("Contrasts  b/w", fcts[[1]], "groups")
-    fc.captn = ifelse(dim(DA_resMTX.sig)[1] > ntax, paste("Plotted:", ntax, "/" , dim(DA_resMTX.sig)[1]) , "")
-    # fc.captn = paste("Plotted:", ntax, "/" , dim(DA_resMTX.sig)[1])
-    
+    fc.title = paste0(DA_type, " top differential TAXa (", agg_at, " level)")
+    fc.subcap = ifelse( dim(DA_resMTX.sig)[1] > ntax, paste0(" (showing top ", ntax,")"), paste0(""))
+    fc.subtl = paste0("Total of ", dim(DA_resMTX.sig)[1], " taxa with signif <", sig, " and effect size >", effZ, fc.subcap)
+    # fc.captn = ifelse(dim(DA_resMTX.sig)[1] > ntax, paste(" (showing top", ntax, "out of" , dim(DA_resMTX.sig)[1] , "sign taxa)"), paste(""))
+
     myTheme <- theme_bw() + theme(
       # axis.text.x = element_blank(), axis.ticks.x = element_blank(),   ## facetes x.axis settings
-      axis.text.x = element_text(angle= x.angle, hjust=0.5, size=10),              ## facetes x.axis settings
-      legend.position = "top",  legend.title= element_text(size=12, face = "bold"), legend.text = element_text(size = 10), 
+      axis.text.x = element_text(angle= x.angle, hjust=0.5, vjust = 0.5, size=10),              ## facetes x.axis settings
+      legend.position = "bottom",  legend.title= element_text(size=12, face = "bold"), legend.text = element_text(size = 10), 
       axis.title = element_text(size = 12),  ## global axises settings
       strip.text.x = element_text(size = 10, colour = "black"),  ## facet text strip settings
       plot.title = element_text(size=14, face = "bold"), plot.subtitle = element_text(size = 10), 
     )
     myLabsBOX <- labs(y=ylabel, x=fcts[[1]], color=fc.color , title = fc.title, 
-                      subtitle = fc.subtl, caption = fc.captn)
+                      subtitle = fc.subtl)##, caption = fc.captn)
     if (length(fcts) > 1){
     myLabsLIN <- labs(y=ylabel, x=fcts[[2]], color=fc.color , title = fc.title, 
-                      subtitle = fc.subtl, caption = fc.captn) }
+                      subtitle = fc.subtl)} ###, caption = fc.captn) }
     
     ## info about the aes_string() replacement: https://www.tidyverse.org/blog/2018/07/ggplot2-tidy-evaluation/
     foldChangeBox.plot <- ggplot(unique(df4plot),  aes_string(fcts[[1]], "Value", color= fc.color )) + 
       facet_wrap( ~ Taxon + SigVal, scales="free_x", ncol=fc.ncol, nrow=fc.nrow  ) +  ###labeller = label_wrap_gen(width=45),
       geom_jitter(position = position_jitterdodge(), size = 1, alpha = 0.3) +
-      geom_boxplot(outlier.shape = NA, fill = NA) + 
+      geom_boxplot(outlier.shape = NA, fill = NA, varwidth= F) +
+          # geom_violin(trim = F, fill = NA, scale = "count", show.legend = F) + 
+          # stat_summary(fun = median, geom = "crossbar",width = 0.3) +#, color = "black")
       myLabsBOX + scale_color_manual(values = colVector) + myTheme 
   }
   
@@ -196,9 +210,9 @@ myDAplotter <- function(DA_obj, fcts,  rand=NULL, corr=NULL, norm="LogRel", norm
   ##' --------  linear regression plot (for continuous (or longitudinal) fct2)
   if ( length(fcts) >1 && mkLongiPlot == T) {
     df4plot[[fcts[[2]]]] %<>% as.character() %>% as.numeric()
-    longi.plot <- ggplot(df4plot, aes_string(fcts[[2]], "Value")) +
+    longi.plot <- ggplot(unique(df4plot), aes_string(fcts[[2]], "Value")) +
       facet_wrap(~Taxon+SigVal, scales="free", ncol=fc.ncol, nrow=fc.nrow ) +
-      geom_point(aes_string(color=fcts[[1]]),  size = 1, alpha = 0.3, 
+      geom_point(aes_string(color=fcts[[1]]),  size = pt_size, alpha = pt_alpha, 
                  position=position_jitterdodge(jitter.width = 0.3))  + 
       geom_smooth(aes_string(color=fcts[[1]]), method = fit, alpha= 0.1) + ##gam for non-linear fit, glm for lin fit
       myLabsLIN + scale_color_manual(values = colVector) + myTheme 
@@ -303,6 +317,9 @@ myDESeq2<-function(amp_obj, fcts, corr=NULL, agg_at= "OTU", check=F, reffLvL=NUL
   ##' --- output formatting
   dsqRES_tax <- dsqRES_tax %>% arrange(desc(abs(log2FoldChange))) %>% 
     mutate(TAX=rownames(.)) %>% relocate(TAX, .before="Taxon")
+  # prev <- rowSums(tmp$abund>0) %>% as.data.frame() %>% rownames_to_column("TAX") %>% rename_with(~c("TAX", "prev"))
+  # des$DA_resMTX <- left_join(des$DA_resMTX, prev,  by= "TAX") %>% arrange(prev) %>%
+  # mutate(rn = TAX) %>% column_to_rownames("rn")
   
          all<- list(dsqRES_tax, agg_at,  DA_type,   amp_obj,   fcts, corr,      dds,   dsqRAW, dsqRES)
   names(all) <- c("DA_resMTX", "agg_at", "DA_type", "amp_obj", "fcts", "corr", "ddsObj", "dsqRAW", "dsqRES")
@@ -318,7 +335,7 @@ myDESeq2<-function(amp_obj, fcts, corr=NULL, agg_at= "OTU", check=F, reffLvL=NUL
 #' ------------------------------------------------------------------------------------------------------------------
 # --------------- my Maaslin funciton --------------------------------------------
 
-myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0.1, minAbu=0.0, 
+myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0.1, minAbu=0.0, #check = F, 
                        reffLvL=NULL,  agg_at = "OTU", model = "LM", transf="NONE", norm="CLR"){
   ## transf="LOG", or norm="CLR", not both
   ## for reffLvL=paste0("HPVstatus,HPVneg")
@@ -338,6 +355,7 @@ myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0
   meta   <- amp_obj$metadata
   meta %<>% select(any_of(c(fcts, rand))) %>% mutate_all( factor)
   
+  # print(counts[1:10, 1:10])
   
   library(Maaslin2)
   DA_type <- "MaAsLin2"
@@ -353,8 +371,9 @@ myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0
   
   start.time <- Sys.time()
   set.seed(123)
-  # suppressMessages( suppressWarnings(
-  maasOUTa = Maaslin2::Maaslin2(input_data = counts, input_metadata = meta, output = maasDIR,
+  
+  capture.output({ suppressMessages({
+  maasOUTa <- Maaslin2::Maaslin2(input_data = counts, input_metadata = meta, output = maasDIR,
                                 fixed_effects = fcts, ## order of vars does NOT matter, all vars are adj for ea/o equal
                                 random_effects = rand,
                                 reference= reffLvL,
@@ -362,7 +381,7 @@ myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0
                                 min_prevalence = minPrev, #neeeds at least 2 samples, so 10% is safest
                                 normalization= norm, transform= transf, analysis_method = model,
                                 plot_heatmap=F, plot_scatter=F, save_models = T, cores=1) ###keep cores at 1, fastest!!
-  # ))
+  }) }, file = paste0(maasDIR, "/maasLog.txt"),  type = c("output", "message") )
   end.time <- Sys.time()
   time.taken <- round(end.time - start.time); print(time.taken)
   
@@ -379,8 +398,10 @@ myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0
     }
   }
   
+
   AICs <- data.frame(AIC=unlist(lapply(maasOUTa[5]$fits, function(x) tryCatch(AIC_forcplm(x), error=function(e) NA))))
   maasOUT <- merge(maasOUTa$results, round(AICs, 2), by.x="feature", by.y=0)
+  # print(maasOUTa$results) %>% heil()
   
   ##' --- output formatting
   ##' feature to TAX & rownames
@@ -391,13 +412,23 @@ myMaAsLin2 <- function(amp_obj, fcts, rand = NULL, maasDIR= "maasOUT", minPrev=0
   ##' will extract only distinct(feature) with higher abs(coef)
   maasOUT <- maasOUT %>% arrange(desc(abs(coef)) ) %>% distinct(feature, .keep_all = TRUE) %>% 
     column_to_rownames("feature") %>% arrange(qval) 
+  # print(maasOUT)
+  # print(tax)
+  
+  ##map maaslin-transformed feature names, back to original / untransformed names
+  orig <- row.names(amp_obj$abund);  safe <- make.names(orig)
+  nameMap <- matrix(ncol = 2, nrow =  length(orig), dimnames = list(NULL, c("oriNames", "trfNames"))) %>% 
+    as.data.frame %>% mutate(oriNames = orig, trfNames = safe)
+  maasOUT$TAX <- rownames(maasOUT) <-  nameMap$oriNames[match(row.names(maasOUT), nameMap$trfNames)]
   
   
+  # if(check == T){print(maasOUT)[1:10, 1:9]}
   if(agg_at=="OTU"){lRank="Species"}else{lRank=agg_at}
   maasOUTt = cbind(maasOUT,
-                   Taxon  = tax[[lRank]][match(rownames(maasOUT), rownames(tax) ) ],
-                   Class  =    tax$Class[match(rownames(maasOUT), rownames(tax) ) ],
+                   Taxon  = tax[[lRank]][match(rownames(maasOUT), rownames(tax) ) ], 
+                   Class  =    tax$Class[match(rownames(maasOUT), rownames(tax) ) ], 
                    Phylm  =   tax$Phylum[match(rownames(maasOUT), rownames(tax) ) ] )
+    # print(maasOUTt)[1:10, 1:10]
   
   all <- list(maasOUTt, agg_at,  DA_type, amp_obj, fcts, rand)
   names(all) <- c("DA_resMTX", "agg_at", "DA_type", "amp_obj", "fcts", "rand")
@@ -637,14 +668,15 @@ myALDEx2 <- function(amp_obj, fct1, corr= NULL, agg_at = "OTU", mode="glm", chec
 
 #' ------------------------------------------------------------------------------------------------
 # ------------------ my LMER DA function ------------------
-##' linear mixed effects model, set as differential abundance fuction 
-##' for longitudinal data
+##' linear model with or without random effect, set as differential abundance function, 
+##' good for for longitudinal and categorical data
+##' function will auto detect if random effect is present and adjust to lmer or use lm
 ##' ensure reffLevel is the first of the fixed effect variable (its also the string_to_remove)
-##' e.g. formula is ABX_AnyDuringNICU + PMA + (1|SubjectID) : must include fixed effect & longitudinal effect & random effect
-##' Grab_term is to choose which term from the stat you want the effect size & p-value for
-##' 
-##' 
-myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #timeVar, subjVar,
+##' ensure **mainVAR** is set in the formula so functions knows which p-Value to grep 
+##' if interactive model is used use mainVar = ":" to grep for the interaction term
+##' not yet sure summary() works
+ 
+myLmerDA <- function(ampObj, formula, mainVar, minPREV= 10, method = "anova", 
                      agg_at = "OTU", norm = "CLR", pseudocount = 0.01 ){
   
   if(! agg_at %in% c("OTU")){
@@ -654,38 +686,44 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
   
   myScripts("dataCorrections.R")
   normCounts <- normMyData(ampObj$abund, norm_method = norm , pseudocount = pseudocount)[[1]]
-  # normCounts[1:10, 1:10]
   normMatrix <- normCounts %>% t() %>% as.data.frame()
-  # normMatrix[1:10, 1:10]
-  
+
   ## for all taxa/aro##s
   library(MuMIn)
   
   ##' method 1 (ano): using anova R2 as effect size & p-value stats from the limMDL:
   ##' - conditional effect size (for the whole model), but lost directionality info
   ##' method 2 (sum): using summary estimate & p-value stats from limMDL:
-  ##' - this will have effect size directional (+/- effect size relative to reference level)
-  ##' - this will have multiple effect sizes and multiple p-values- one for each pair of refLvL-vs-fctLvl for each taxa
+  ##' - this will have effect directionality  (+/- effect size relative to reference level)
+  ##' - but will have multiple effect sizes and p-values: one for each pair of refLvL-vs-fctLvl for each taxa
   ##' - here I am selecting to represent the stats for the pair with biggest effsiz (& smaller p-value) for each taxon
   
   lmr_all <- as.data.frame(matrix(ncol = 3, nrow = length(colnames(normMatrix)) ), row.names = colnames(normMatrix) )
   colnames(lmr_all) <- c( "EffectPair", "EffSiZ", "pval")
   
-  
-  ## fixed_effect name to remove from effPair
-  # string_to_remove<- ifelse(is.null(string_to_remove), strsplit(formula, split = "\\+| ")[[1]][[1]], string_to_remove) 
+  if(str_detect(formula, "1\\|")){ 
+     print("detected random effect; using lmer()"); fit_mode <- "lmer"
+    }else{ 
+    print("random effect not detected; using lm()"); fit_mode <- "lm" }
   
   model_formula <- as.formula(paste("normMatrix[[i]]", formula))  
   
   if (method == "anova"){
     ##' method 1 (anova): using anova R2 as effect size & p-value stats from the limMDL:
     ##' - conditional effect size (for the whole model), but lost directionality info
-    print("calculating linear mixed effects & grabbing anova(model) stats for each feature")
+    print("calculating linear model & grabbing anova(model) stats for each feature")
     for (i in colnames(normMatrix) ){
-      limMDL <- lmerTest::lmer(model_formula , data = ampObj$metadata)
-      stat <- anova(limMDL, by = "margin")
-      d<- dim(stat)
-      avoP <- stat[d[[1]], d[[2]] ]  ## the last-row & last-col is p-value of interest Def is the fixed_effect 
+      suppressMessages({
+            if (fit_mode == "lmer"){
+              limMDL <- lmerTest::lmer(model_formula , data = ampObj$metadata) 
+            }else{ 
+              limMDL <-             lm(model_formula , data = ampObj$metadata)    
+            } ##close ifelse
+          })  ##/suppressMessages works
+      stat <- car::Anova(limMDL, type = 3)
+      d<- dim(stat); # print(stat)
+      avoP <- stat[str_detect(row.names(stat), mainVar), d[[2]] ]  ## the last-row & last-col is p-value of interest
+      # avoP <- stat %>% filter(str_detect(":"))
       # eta_sqr <-  stat[["Sum Sq"]][d[[1]]]  / sum(stat[["Sum Sq"]]) ## variance proportion captured by that 1 variable. We dont want this for DA
       avoZ <- r.squaredGLMM(limMDL)[[2]] ## variance explained by full model (all effects & conditions) == R2conditional == effectsize (non-directional)
       lmr_all[i, ] <- list("global", avoZ, avoP) %>% as.data.frame()
@@ -695,21 +733,25 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
     ##' - this will have effect size be directional (+/- effect size relative to reference level)
     ##' - this will have multiple effect sizes and multiple p-values- one for each pair of refLvL-vs-fctLvl for each taxa
     ##' - here I am selecting to represent the stats for the pair with biggest effsiz (& smaller p-value) for each taxon
-    print("calculating linear mixed effects & grabbing the summary(model) stats for each feature")    
+    print("calculating linear model & grabbing the summary(model) stats for each feature")    
     for (i in colnames(normMatrix) ){
-      limMDL <- lmerTest::lmer(model_formula , data = ampObj$metadata)
-      stat <- summary(limMDL)$coefficients
-      d <- dim(stat); l <- d[[1]]- (length(levels(ampObj$metadata[[mainVar]])) -2 ) ## start-row to grab from
-      sum1 <- stat[ c(l:d[[1]]) , c(1,5)] %>% as.data.frame() %>% rownames_to_column("EffPair") %>% 
+            if(fit_mode == "lmer"){
+              limMDL <- lmerTest::lmer(model_formula , data = ampObj$metadata) 
+              }else{      limMDL <- lm(model_formula , data = ampObj$metadata) }
+      stat <- summary(limMDL)$coefficients; 
+      d <- dim(stat); #print(d); 
+      l <- d[[1]] - (length(unique(ampObj$metadata[[mainVar]])) -2 ) ## start-row to grab from , but only works in catg var, not cont
+      sum1 <- stat[ c(l:d[[1]]) , c(1,5)] %>% as.data.frame() %>% rownames_to_column("EffPair") %>%  ## need to fix this mess
         mutate(EffPair = str_remove(EffPair, ".*\\:"))  %>% mutate(EffPair= str_remove(EffPair , mainVar))
       ## grabbing the last N rows, representing the interactive or additive values for the mainVAR
       sum1 <- sum1 %>% slice_max(order_by = desc((Estimate) ), n = 1) ### grabbing the pair with biggest effect size
       lmr_all[i, ] <- sum1 
-    }
-  }else{ print("method has to be one of 'anova' or 'summary'"); stop()   }
+    }    }else{ print("method has to be one of 'anova' or 'summary'"); stop()   }
+
+
   
-  print("example stat output:")
-  print(stat) ## prints the last stat (anova or summary) select proper grab_term if needed
+  # print("example stat output:")
+  # print(stat) ## prints the last stat (anova or summary) select proper grab_term if needed
   
   # lmr_all %>% heil()
   lmr_all %<>% mutate(padj = p.adjust(pval, method = "BH") ) ## adjsting the pvals using Benjamini-Hochberg correction
@@ -721,7 +763,7 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
   
   lmr_alltu <-  bind_cols(lmr_all, tu)                    ## adding in the taxonomy info
   lmr_alltu %<>% filter(prev > minPREV)                   ## the downstream filtering
-  
+  # lmr_alltu %<>% mutate(EffSiZave = EffSiZ - weighted.mean(EffSiZ, w = prev))
   
   ## Gathering steps
   lmerOUT <- list()
@@ -761,7 +803,15 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
 #     **method 2**: check model fit 
 #      do **AIC(m1, m2)** and **BIC(m1,m2)**
 #     - the lower AIC or BIC value represents the better model fit
-#          
+# 
+#       **method 3**: consider if variables are independent of each other or not?   
+#       - independent variables you need to adjust for, are added as additive model
+#       - if variables are known dependent/covariables/corelating somehow, => add them as interactive term
+#         e.g. is myVAR: SeasonDay (Day of game season) & SeasonPhaseN (phase of season)
+#         they are both longitudinal, but also depend on each other: cannot have high season phase in low season day
+#        > model is seasonDay*SeasonPhase. Then later wain correcting main VARs, just 1 is sufficient
+#     
+#
 #     Note: it is normal to have sig anova and higher AIC/BIC model fit. means that the interaction does\
 #     explain sig more variation but at the cost of added complexity to the model fit.
 #     If the interaction is theoretically important (e.g. biological reasoning), keep it despite the higher AIC.
@@ -771,7 +821,7 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
 #  - how to know **if variable is a confounder** and needs to be corrected for 
 #          setup:
 #            m1 <- lmer(PCoN ~ mainVAR + (1|PID) ) [no confounder]
-#          m2 <- lmer(PCoN ~ mainVAR + pConf + (1|PID)) [added potential confounder]
+#            m2 <- lmer(PCoN ~ mainVAR + pConf + (1|PID)) [added potential confounder]
 #          do **anova(m1, m2)**
 #          - if anova(m1,m2) is SIG => adding the pConf is necessary (pConf is a confounder)
 #          - if anova(m1,m2) is NS, adding the pConf is not needed
@@ -785,7 +835,8 @@ myLmerDA <- function(ampObj, formula, minPREV= 10, method = "anova", mainVar, #t
 # ---------- my Byasian additive mixed effects model ------------------------------------------
 ##' original by Katie, saved in NICU project, untitled.R
 ##' works with DA plotter
-myBamDA<- function(ampObj, FctVar, TimeVar, SubjVar = "SubjectID", selTaxRanks = taxRanks, minPREV = 10, agg_at = "OTU" ) {
+myBamDA<- function(ampObj, FctVar, TimeVar, SubjVar = "SubjectID",  corrVar,
+                    selTaxRanks = taxRanks, minPREV = 10, agg_at = "OTU" ) {
   source(paste0("~/Documents/MyApps/RScripts/myRscripts/dataClean.R"))
   source(paste0("~/Documents/MyApps/RScripts/myRscripts/otherFunctions.R"))
   
@@ -800,14 +851,19 @@ myBamDA<- function(ampObj, FctVar, TimeVar, SubjVar = "SubjectID", selTaxRanks =
   taxon <- psmelt(phyObj) %>% mutate(
     SubjectID = factor(get(SubjVar)), 
     TimeVar = get(TimeVar),
+    corrVar = get(corrVar),
     Var = factor(get(FctVar))) %>% 
     group_by(OTU)  ## groups set here is how do() knows what to apply to
-  taxon_gam <- taxon %>% do(broom::tidy(bam(log(Abundance+1) ~ Var + s(TimeVar, by=Var) + s(SubjectID, bs="re"), data=.), parametric=T)) %>% 
+  library(mgcv)
+  taxon_gam <- taxon %>% do(broom::tidy(bam(log(Abundance+1) ~ Var + s(TimeVar, by=Var) + s(SubjectID, bs="re") + corrVar, data=.), parametric=T)) %>% 
     filter(grepl("Var", term)) %>% ungroup() %>% mutate(p.adj = p.adjust(as.numeric(p.value), "fdr")) %>% select(!term)  
-  # taxon_gam
-  tax_info <- ampObj$tax %>% select(selTaxRanks) %>% data.frame() %>% rownames_to_column()
-  tab_gam <- taxon_gam %>%  arrange(OTU, p.value) %>% distinct(OTU, .keep_all = T) %>%   left_join(tax_info)
-  tab_gam %<>% dplyr::rename(TAX = Species, Taxon = Genus, Phylm = Phylum) %>% column_to_rownames("rowname")
+  print(taxon_gam)
+  
+  tax_info <- ampObj$tax %>% select(selTaxRanks) %>% data.frame() %>% rownames_to_column("OTU")
+  print(tax_info[1:10, 1:8])
+  
+  tab_gam <- taxon_gam %>%  arrange(OTU, p.value) %>% distinct(OTU, .keep_all = T) %>% left_join(., tax_info, by = "OTU")
+  tab_gam %<>% dplyr::rename(TAX = Species, Taxon = Genus, Phylm = Phylum) %>% column_to_rownames("OTU") #rowname
   tab_gam %<>% mutate(prev =  rowSums(ampObj$abund > 0), .after = "p.adj") %>% arrange(prev) %>% filter(prev > minPREV)
   # tab_gam  %>% heil()
   
