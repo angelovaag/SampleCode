@@ -1,0 +1,133 @@
+__default__:
+  partition:
+    - all
+  threads: 16
+  mem_gb: 64G
+  time: 8:00:00
+  modules:
+    - pigz
+    - python
+  conda: wgsa2
+  tmpdir: TMP_DIR
+  jobname: "{rule}"
+  log: '{wildcards.sampName}'
+
+run_fastp:
+  threads: 16
+  mem_gb: 64G
+
+decontam:
+  threads: 12
+  mem_gb: 194G
+
+remove_rRNA:
+  threads: 12
+  mem_gb: 120G
+
+readTAX_run_Kraken2:
+  threads: 16
+  mem_gb: 194G
+
+readTAX_run_Braken2:
+  threads: 8
+  mem_gb: 32G
+
+run_metaspades:
+  threads: 20
+  mem_gb: 150G
+
+run_trinity:
+  threads: 12
+  mem_gb: 100G
+
+bowtie2_build:
+  threads: 12
+  mem_gb: 100G
+
+bowtie2_run:
+  threads: 12
+  mem_gb: 80G
+
+sam_to_bam:
+  threads: 12
+  mem_gb: 80G
+
+gene_prediction:
+  mem_gb: 80G
+
+gene_counts_verse:
+  threads: 12
+  mem_gb: 40G
+
+gene_annotation:
+  threads: 32
+  mem_gb: 196G
+
+gene_annotation_grep:
+  threads: 4
+  mem_gb: 50G
+
+run_amrfinder:
+  threads: 12
+  mem_gb: 80G
+  conda: amgs
+
+run_RGI:
+  threads: 12
+  mem_gb: 80G
+  conda: amgs
+
+bin_with_metabat2:
+  threads: 16
+  mem_gb: 100G
+  conda: metabat2
+
+checkm_lineage_wf:
+  threads: 12
+  mem_gb: 100G
+
+checkm_qa:
+  threads: 12
+  mem_gb: 100G
+
+checkm_coverage:
+  threads: 12
+  mem_gb: 100G
+
+geneTAX_kraken:
+  threads: 16
+  mem_gb: 120G
+
+TAX_collation:
+  log: "comb"
+
+TAX_collation_biom:
+  log: "comb"
+
+TAX_diversity_plots:
+  log: "comb"
+  mem_gb: 50G
+
+PWY_collation:
+  log: "comb"
+  mem_gb: 100G
+
+PWY_collation_biom:
+  log: "comb"
+
+PWY_diversity_plots:
+  log: "comb"
+  mem_gb: 200G
+
+readTAX_kronaPlot:
+  log: "comb"
+
+gene_cp_TPMfiles:
+  log: "comb"
+
+pwy_krona_import_text:
+  log: "comb"
+
+make_scaffCoverage_file:
+  mem_gb: 50G
+  threads: 4
