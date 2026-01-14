@@ -1,3 +1,4 @@
-decontamDB: /data/BCBB_microbiome_db/Kraken2_db/decontam_db/decontam_rodent_db
-classDB: /data/BCBB_microbiome_db/Kraken2_db/taxonomic_db/plusPVF
-kreport2krona_script: /home/angelovaag/MyScripts/kreport2krona_modifications/kreport2krona.py
+decontamDB: /dbs/Kraken2_db/decontam_db/decontam_rodent_db
+classDB: /dbs/Kraken2_db/taxonomic_db/plusPVF
+kreport2krona_script: /scripts/kreport2krona_modifications/kreport2krona.py
+.....
